@@ -29,22 +29,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Lua 5.1
-        uses: leafo/gh-actions-lua@v10
-        with:
-          luaVersion: "5.1"
-
-      - name: Set up LuaRocks
-        uses: leafo/gh-actions-luarocks@v4
-
-      - name: Install luacheck
-        run: luarocks install luacheck
+      # Ubuntu's own lua5.1 package -- ships lua5.1/luac5.1 under those exact
+      # names (unlike some third-party setup actions, which install generic
+      # lua/luac and break scripts written for the versioned names).
+      - name: Install Lua 5.1 and luacheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 liblua5.1-0-dev luarocks
+          sudo luarocks --lua-version=5.1 install luacheck
 
       - name: Syntax-check every .lua file
         run: |
+          set -euo pipefail
           for f in *.lua; do
-            echo "luac -p $f"
-            luac -p "$f"
+            echo "luac5.1 -p $f"
+            luac5.1 -p "$f"
           done
 
       - name: Lint with luacheck
