@@ -4,8 +4,8 @@ A WoW addon that pops up a random picture and a countdown the moment your raid's
 
 ## Install it
 
-1. Download this folder (ask whoever shared it with you for a `.zip`, or download it from wherever you got this link).
-2. If it's a `.zip`, right-click it and **Extract All**.
+1. Download the latest `.zip` from the [Releases page](https://github.com/Devbezos/reforged-break-timer/releases/latest).
+2. Right-click the downloaded `.zip` and **Extract All**.
 3. Find your WoW AddOns folder. It's usually:
 
    `World of Warcraft\_retail_\Interface\AddOns\`
@@ -38,21 +38,32 @@ There's nothing to turn on. The moment BigWigs calls a break, the popup appears 
 
 ---
 
-## For addon maintainers
+## Using your own images
 
-The sections below are for whoever curates the pictures or maintains this repo — everyday users don't need any of this.
+Want the popup to show your own raid's pictures instead of (or alongside) the defaults? There are two ways in, depending on how much you want to change.
 
-### Adding pictures
+### Easiest: swap an existing picture, no tools needed
 
-WoW addons run in a locked-down sandbox and can't read a folder's contents at runtime, so there's no "drop a file in and it just appears" — a small script has to regenerate a manifest file (`Images.lua`) instead.
+Every picture the addon knows about is a `.tga` file in the `images/` folder — either in this repo, or inside your installed `...\AddOns\ReforgedBreakTimer\images\` folder. Because the addon just points at that folder by filename, you can replace any of those `.tga` files with your own picture **as long as you keep the exact same filename** — nothing else needs to change, and you don't need PowerShell, ffmpeg, or to touch `Images.lua` at all.
+
+1. Pick an existing image to replace, e.g. `images\macro2.tga`, and note its exact filename.
+2. Convert your picture to `.tga` (any free online PNG/JPG-to-TGA converter works, or use the included `ConvertImages.ps1` script described further down if you'd rather).
+3. Rename your converted file to match exactly, e.g. `macro2.tga`, and overwrite the original with it.
+4. In-game, type `/reload` (or relaunch WoW) — your picture shows up in its place immediately, no other steps required.
+
+This only works for *replacing* one of the existing pictures — the picture count and display names in the options panel stay the same. To add more pictures than currently exist, or remove some entirely, see below.
+
+### Adding or removing pictures (needs this source repo + PowerShell)
+
+WoW addons run in a locked-down sandbox and can't read a folder's contents at runtime, so changing *how many* pictures there are (not just swapping one out) means regenerating a manifest file (`Images.lua`) with a script — which means working from this source repo, not just a downloaded release zip.
 
 **If your picture is already a `.tga` or `.blp`:**
 
-1. Put it in `images/`.
-2. Run `GenerateImages.ps1` (double-click it, or `./GenerateImages.ps1` in a PowerShell terminal here). It scans `images/` and rewrites `Images.lua`, turning `coffee_mug.tga` into the display name "Coffee Mug".
+1. Put it in `images/` (or delete a file from there to remove that picture).
+2. Run `GenerateImages.ps1` (double-click it, or `./GenerateImages.ps1` in a PowerShell terminal here). It scans `images/` and rewrites `Images.lua` to match, turning `coffee_mug.tga` into the display name "Coffee Mug".
 3. In-game: `/reload`, then toggle it on in the options panel if needed.
 
-**If it's a PNG/JPG/BMP/GIF/WEBP instead:**
+**If it's a PNG/JPG/BMP/GIF/WEBP instead — converting a batch of pictures:**
 
 1. Put it in `images-src/` (not `images/`).
 2. Run `./ConvertImages.ps1`. It converts each file to a same-named `.tga` in `images/` — via [ffmpeg](https://ffmpeg.org/) (must be on PATH; `winget install ffmpeg` if missing) — and automatically runs `GenerateImages.ps1` for you.
@@ -61,6 +72,12 @@ WoW addons run in a locked-down sandbox and can't read a folder's contents at ru
 `images-src/` is only a staging folder — nothing in it is ever deployed to WoW, so raw source files never bloat the shipped addon. Only `images/` (the `.tga`/`.blp` output) goes out.
 
 Useful `ConvertImages.ps1` flags: `-Force` (reconvert even if a `.tga` already exists), `-DeleteOriginals` (delete the source file from `images-src/` once converted), `-SkipGenerate` (convert only, skip the `Images.lua` refresh).
+
+Once you're happy with the picture set, either run `scripts/deploy_to_wow.ps1` to test it locally, or push a version tag (see [Releasing a new version](#releasing-a-new-version) below) to have GitHub build a new zip anyone can download.
+
+## For addon maintainers
+
+The sections below are for whoever maintains this repo — everyday users don't need any of this.
 
 ### How the popup works internally
 
@@ -82,6 +99,24 @@ It runs Lua 5.1 syntax checks and `luacheck` over every `.lua` file first and ab
 
 Requires Lua 5.1 (`lua.exe`/`luac.exe`) and `luacheck.exe` on PATH (or their default install locations).
 
+### Releasing a new version
+
+A GitHub Actions workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds the downloadable `.zip` — nobody needs to zip anything by hand.
+
+**To ship a real release:**
+
+1. Bump `## Version:` in `ReforgedBreakTimer.toc` if you want the source repo itself to reflect it (optional — the workflow overwrites the packaged copy's version to match the tag either way).
+2. Commit, then tag and push:
+   ```
+   git tag v3.1.0
+   git push origin v3.1.0
+   ```
+3. GitHub Actions syntax-checks and lints every `.lua` file, packages the `.toc` + the files it lists + `images/` (never `images-src/`, `scripts/`, or other repo tooling) into `ReforgedBreakTimer-3.1.0.zip`, and publishes it as a GitHub Release with that zip attached. That's the file end users download and drag into their AddOns folder.
+
+**To sanity-check a build without releasing it:** go to the repo's **Actions** tab → **Release** → **Run workflow** on the branch you want to test. It runs the same validate-and-package steps and uploads the zip as a workflow artifact instead of publishing a Release — nothing gets tagged or made public.
+
+If the Lua validation step fails (a syntax error or a `luacheck` finding), the whole workflow stops before anything is packaged or published.
+
 ### Files
 
 | File | Purpose |
@@ -92,6 +127,7 @@ Requires Lua 5.1 (`lua.exe`/`luac.exe`) and `luacheck.exe` on PATH (or their def
 | `GenerateImages.ps1` | Scans `images/` and rewrites `Images.lua`. |
 | `ConvertImages.ps1` | Converts PNG/JPG/BMP/GIF/WEBP from `images-src/` to `.tga` in `images/`, then runs `GenerateImages.ps1`. |
 | `scripts/deploy_to_wow.ps1` | Dev-only: validates and copies the addon into a local WoW AddOns folder. |
+| `.github/workflows/release.yml` | CI: validates the addon and builds/publishes the release `.zip` (see [Releasing a new version](#releasing-a-new-version)). |
 | `.luacheckrc` | Lint config (ignores WoW's runtime-provided globals). |
 | `images/` | WoW-ready `.tga`/`.blp` files only — this folder is what actually ships. |
 | `images-src/` | Drop original PNG/JPG/etc. files here before converting — never deployed. |

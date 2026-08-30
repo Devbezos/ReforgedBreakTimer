@@ -1,0 +1,115 @@
+name: Release
+
+# Builds a WoW-installable ReforgedBreakTimer-<version>.zip.
+#
+# - Push a tag like "v3.0.1" to validate, build, and publish it as a GitHub
+#   Release automatically.
+# - Or run this workflow manually (Actions tab -> Release -> Run workflow)
+#   to just produce a downloadable build artifact, e.g. to sanity-check a
+#   branch before tagging it.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp on this test build (e.g. 3.1.0). Leave blank to reuse the .toc's current ## Version."
+        required: false
+        default: ""
+
+env:
+  ADDON_NAME: ReforgedBreakTimer
+
+jobs:
+  validate:
+    name: Validate Lua
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Lua 5.1
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1"
+
+      - name: Set up LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+
+      - name: Install luacheck
+        run: luarocks install luacheck
+
+      - name: Syntax-check every .lua file
+        run: |
+          for f in *.lua; do
+            echo "luac5.1 -p $f"
+            luac5.1 -p "$f"
+          done
+
+      - name: Lint with luacheck
+        run: luacheck Images.lua "${ADDON_NAME}.lua" Options.lua
+
+  release:
+    name: Build release zip
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              VERSION=$(grep -oP '(?<=## Version: ).*' "${ADDON_NAME}.toc" | tr -d '\r')
+            fi
+          fi
+          echo "Building version $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stage addon files
+        run: |
+          set -euo pipefail
+          STAGE="dist/${ADDON_NAME}"
+          mkdir -p "$STAGE"
+
+          # Ship exactly what scripts/deploy_to_wow.ps1 deploys locally: the
+          # .toc, every file it lists, and images/ -- never images-src/,
+          # scripts/, or other repo tooling.
+          cp "${ADDON_NAME}.toc" "$STAGE/"
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+            cp "$line" "$STAGE/"
+          done < "${ADDON_NAME}.toc"
+          cp -r images "$STAGE/"
+
+          # Stamp the packaged .toc with the release version being built.
+          sed -i "s/^## Version:.*/## Version: ${{ steps.version.outputs.version }}/" "$STAGE/${ADDON_NAME}.toc"
+
+      - name: Zip it
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -rq "../${ADDON_NAME}-${{ steps.version.outputs.version }}.zip" "${ADDON_NAME}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ADDON_NAME }}-${{ steps.version.outputs.version }}
+          path: ${{ env.ADDON_NAME }}-${{ steps.version.outputs.version }}.zip
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ADDON_NAME }}-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
