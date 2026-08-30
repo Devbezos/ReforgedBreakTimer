@@ -83,6 +83,8 @@ The sections below are for whoever maintains this repo — everyday users don't 
 
 Reforged Break Timer has no manual controls or slash commands. It polls `BigWigs3DB.breakTime` (the same saved-variable table BigWigs itself writes to) once a second; the instant BigWigs reports an active break, the frame shows a random enabled image and counts down the remaining time, then hides itself the moment the break ends.
 
+While a break is active, the picture cycles through every enabled image roughly once: the switch interval is the break's total length divided by the number of enabled pictures (minimum 2 seconds, so a huge picture list on a short break doesn't flicker). With only one picture enabled, it just stays put.
+
 ### Deploying a local build for testing
 
 `scripts/deploy_to_wow.ps1` copies this repo straight into a WoW install on **your own dev machine** (it has hardcoded local paths — not something an end user should run):
