@@ -81,9 +81,9 @@ The sections below are for whoever maintains this repo — everyday users don't 
 
 ### How the popup works internally
 
-Reforged Break Timer has no manual controls or slash commands. It polls `BigWigs3DB.breakTime` (the same saved-variable table BigWigs itself writes to) 5 times a second; the instant BigWigs reports an active break, the frame shows a random enabled image and counts down the remaining time, then hides itself the moment the break ends.
+Reforged Break Timer has no manual controls or slash commands. Its primary detection path hooks BigWigs' own `BigWigs_StartBreak`/`BigWigs_StopBreak` AceEvent-3.0 messages — the same ones BigWigs' own break bar reacts to, fired the instant a break starts or ends with full `GetTime()` precision — so the popup's countdown starts in step with BigWigs' own bar, not a poll cycle behind it.
 
-The countdown can still trail BigWigs' own bar by up to ~1 second, because `BigWigs3DB.breakTime` itself only stores whole-second precision (`time()`, not `GetTime()`) — that's the source data's limit, not our poll rate. Hooking BigWigs' `BigWigs_StartBar` message directly instead of polling its saved variable would close that last gap, at the cost of depending on BigWigs' internal message API rather than just its SavedVariables table.
+As a safety net (in case AceEvent-3.0 isn't available yet, or our addon registers its listener after BigWigs already fired the message for an in-progress break), it also polls `BigWigs3DB.breakTime` — the same saved-variable table BigWigs itself writes to — 5 times a second. That fallback path can still trail BigWigs' own bar by up to ~1 second, because `BigWigs3DB.breakTime` only stores whole-second precision (`time()`, not `GetTime()`); that's a limit of the fallback's source data, not something pollable away. In the normal case where the message hook connects (BigWigs installed and loaded, which the `## OptionalDeps: BigWigs` in the `.toc` ensures happens before we do), the fallback should rarely if ever be the one that fires.
 
 While a break is active, the picture cycles through every enabled image roughly once: the switch interval is the break's total length divided by the number of enabled pictures (minimum 2 seconds, so a huge picture list on a short break doesn't flicker). With only one picture enabled, it just stays put.
 

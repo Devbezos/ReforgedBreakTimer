@@ -159,12 +159,18 @@ end
 --------------------------------------------------------------------------
 -- BigWigs break detection
 --------------------------------------------------------------------------
--- BigWigs_Plugins/Break.lua stores the active break in BigWigs3DB.breakTime:
---   { time(), totalSeconds, nick, isDBM }
--- BigWigs writes this the instant a break starts, so any lag between its bar
--- appearing and ours is purely how often we poll -- poll fast (5x/sec) so the
--- popup and countdown stay tight to BigWigs' own timing instead of trailing
--- by up to a full second. No AceEvent dependency, no load-order issues.
+-- Primary path: BigWigs' Break plugin fires "BigWigs_StartBreak" /
+-- "BigWigs_StopBreak" via AceEvent-3.0 the instant a break starts/ends,
+-- with full GetTime()-precision duration -- no rounding, no polling lag,
+-- so our countdown starts in the same tick as BigWigs' own bar.
+--
+-- Fallback path: BigWigs_Plugins/Break.lua also stores the active break in
+-- BigWigs3DB.breakTime: { time(), totalSeconds, nick, isDBM }. We poll that
+-- (5x/sec) in case the message path isn't available -- e.g. our addon
+-- registers after BigWigs already fired BigWigs_StartBreak for this break,
+-- or AceEvent-3.0 isn't loaded for some reason. This path only has
+-- whole-second precision (time(), not GetTime()), so it's the one place
+-- a ~1s offset from BigWigs' own bar can still show up.
 
 local function checkBreak()
     local tbl = BigWigs3DB and BigWigs3DB.breakTime
@@ -184,6 +190,31 @@ local function checkBreak()
         wasBreakActive = false
         ns.HideBreak()
     end
+end
+
+-- Registers with BigWigs' own message bus for exact-precision timing.
+-- Returns true if it managed to hook in, false if AceEvent-3.0 isn't
+-- available yet (the poll-based fallback above still works either way).
+local function hookBigWigsMessages()
+    local AceEvent = LibStub and LibStub("AceEvent-3.0", true)
+    if not AceEvent then
+        return false
+    end
+
+    local listener = {}
+    AceEvent:Embed(listener)
+
+    listener:RegisterMessage("BigWigs_StartBreak", function(_, _, seconds)
+        wasBreakActive = true
+        ns.ShowBreak(seconds, seconds)
+    end)
+
+    listener:RegisterMessage("BigWigs_StopBreak", function()
+        wasBreakActive = false
+        ns.HideBreak()
+    end)
+
+    return true
 end
 
 --------------------------------------------------------------------------
@@ -299,8 +330,15 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     end
 
     -- Stay out of the way until BigWigs actually calls a break; the frame
-    -- only appears on its own when checkBreak() detects one.
+    -- only appears on its own when the message hook (or, failing that,
+    -- checkBreak()) detects one.
     frame:Hide()
+
+    -- ## OptionalDeps: BigWigs in the .toc means BigWigs (and its bundled
+    -- AceEvent-3.0) loads before we do, so this should succeed whenever
+    -- BigWigs is installed. The poll below still runs regardless, as a
+    -- safety net for whatever this doesn't catch.
+    hookBigWigsMessages()
 
     C_Timer.NewTicker(0.2, checkBreak)
 end)
