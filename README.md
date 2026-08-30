@@ -81,7 +81,9 @@ The sections below are for whoever maintains this repo — everyday users don't 
 
 ### How the popup works internally
 
-Reforged Break Timer has no manual controls or slash commands. It polls `BigWigs3DB.breakTime` (the same saved-variable table BigWigs itself writes to) once a second; the instant BigWigs reports an active break, the frame shows a random enabled image and counts down the remaining time, then hides itself the moment the break ends.
+Reforged Break Timer has no manual controls or slash commands. It polls `BigWigs3DB.breakTime` (the same saved-variable table BigWigs itself writes to) 5 times a second; the instant BigWigs reports an active break, the frame shows a random enabled image and counts down the remaining time, then hides itself the moment the break ends.
+
+The countdown can still trail BigWigs' own bar by up to ~1 second, because `BigWigs3DB.breakTime` itself only stores whole-second precision (`time()`, not `GetTime()`) — that's the source data's limit, not our poll rate. Hooking BigWigs' `BigWigs_StartBar` message directly instead of polling its saved variable would close that last gap, at the cost of depending on BigWigs' internal message API rather than just its SavedVariables table.
 
 While a break is active, the picture cycles through every enabled image roughly once: the switch interval is the break's total length divided by the number of enabled pictures (minimum 2 seconds, so a huge picture list on a short break doesn't flicker). With only one picture enabled, it just stays put.
 

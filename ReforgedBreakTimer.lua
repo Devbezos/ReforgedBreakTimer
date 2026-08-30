@@ -102,10 +102,10 @@ local function updateDisplay(remaining, total)
     ReforgedBreakTimerFrame.progressBar:SetValue(progress)
 end
 
--- Runs every ~0.5s while the frame is shown (WoW skips OnUpdate on hidden frames).
+-- Runs every ~0.2s while the frame is shown (WoW skips OnUpdate on hidden frames).
 local function onBreakUpdate(self, elapsed)
     self.tick = (self.tick or 0) + elapsed
-    if self.tick < 0.5 then
+    if self.tick < 0.2 then
         return
     end
     self.tick = 0
@@ -161,7 +161,10 @@ end
 --------------------------------------------------------------------------
 -- BigWigs_Plugins/Break.lua stores the active break in BigWigs3DB.breakTime:
 --   { time(), totalSeconds, nick, isDBM }
--- We poll that table every second -- no AceEvent dependency, no load-order issues.
+-- BigWigs writes this the instant a break starts, so any lag between its bar
+-- appearing and ours is purely how often we poll -- poll fast (5x/sec) so the
+-- popup and countdown stay tight to BigWigs' own timing instead of trailing
+-- by up to a full second. No AceEvent dependency, no load-order issues.
 
 local function checkBreak()
     local tbl = BigWigs3DB and BigWigs3DB.breakTime
@@ -299,5 +302,5 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     -- only appears on its own when checkBreak() detects one.
     frame:Hide()
 
-    C_Timer.NewTicker(1, checkBreak)
+    C_Timer.NewTicker(0.2, checkBreak)
 end)
