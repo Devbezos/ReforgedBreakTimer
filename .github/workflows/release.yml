@@ -43,8 +43,8 @@ jobs:
       - name: Syntax-check every .lua file
         run: |
           for f in *.lua; do
-            echo "luac5.1 -p $f"
-            luac5.1 -p "$f"
+            echo "luac -p $f"
+            luac -p "$f"
           done
 
       - name: Lint with luacheck
