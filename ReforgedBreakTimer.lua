@@ -194,7 +194,7 @@ local function createFrame()
     frame:SetBackdropBorderColor(ACCENT_COLOR[1], ACCENT_COLOR[2], ACCENT_COLOR[3], 1)
 
     frame.closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    frame.closeButton:SetPoint("TOPRIGHT", 2, 2)
+    frame.closeButton:SetPoint("TOPRIGHT", -6, -6)
     frame.closeButton:SetScript("OnClick", function() frame:Hide() end)
 
     frame.optionsButton = CreateFrame("Button", nil, frame)
