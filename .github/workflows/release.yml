@@ -2,20 +2,22 @@ name: Release
 
 # Builds a WoW-installable ReforgedBreakTimer-<version>.zip.
 #
-# - Push a tag like "v3.0.1" to validate, build, and publish it as a GitHub
-#   Release automatically.
-# - Or run this workflow manually (Actions tab -> Release -> Run workflow)
-#   to just produce a downloadable build artifact, e.g. to sanity-check a
-#   branch before tagging it.
+# - Every push to main auto-bumps the MINOR version (X.Y.Z -> X.(Y+1).0) from
+#   the latest published release, commits that bump into ReforgedBreakTimer.toc,
+#   tags it, and publishes a GitHub Release with the zip attached. There is no
+#   manual "git tag" step -- pushing to main IS the release.
+# - Run this workflow manually (Actions tab -> Release -> Run workflow) to
+#   just produce a downloadable build artifact without publishing anything --
+#   e.g. to sanity-check a branch before merging it to main.
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp on this test build (e.g. 3.1.0). Leave blank to reuse the .toc's current ## Version."
+        description: "Version to stamp on a manual test build (e.g. 1.5.0). Leave blank to preview the next auto-bumped minor version without publishing anything."
         required: false
         default: ""
 
@@ -51,7 +53,7 @@ jobs:
         run: luacheck Images.lua "${ADDON_NAME}.lua" Options.lua
 
   release:
-    name: Build release zip
+    name: Bump version and publish release
     needs: validate
     runs-on: ubuntu-latest
     permissions:
@@ -59,20 +61,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine version
+      - name: Determine next version
         id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+
+          # A manual test run can pin an exact version to preview; otherwise
+          # (both for a real push-to-main release AND for an unpinned manual
+          # test run) the next version is always the latest published
+          # release's minor version, bumped by one, patch reset to 0.
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            VERSION="${{ github.event.inputs.version }}"
-            if [ -z "$VERSION" ]; then
-              VERSION=$(grep -oP '(?<=## Version: ).*' "${ADDON_NAME}.toc" | tr -d '\r')
+            LATEST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+            if [ -z "${LATEST_TAG:-}" ]; then
+              # No release has ever been published -- fall back to whatever
+              # version is currently committed in the .toc as the baseline.
+              LATEST_TAG="v$(grep -oP '(?<=## Version: ).*' "${ADDON_NAME}.toc" | tr -d '\r')"
             fi
+
+            BASE="${LATEST_TAG#v}"
+            MAJOR="${BASE%%.*}"
+            REST="${BASE#*.}"
+            MINOR="${REST%%.*}"
+            MAJOR="${MAJOR:-0}"
+            MINOR="${MINOR:-0}"
+            VERSION="${MAJOR}.$((MINOR + 1)).0"
+
+            echo "Latest published release: $LATEST_TAG"
           fi
-          echo "Building version $VERSION"
+
+          IS_RELEASE=false
+          if [ "${{ github.event_name }}" = "push" ]; then
+            IS_RELEASE=true
+          fi
+
+          echo "Building version $VERSION (publish: $IS_RELEASE)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version in the .toc and commit it
+        if: steps.version.outputs.is_release == 'true'
+        run: |
+          set -euo pipefail
+          sed -i "s/^## Version:.*/## Version: ${{ steps.version.outputs.version }}/" "${ADDON_NAME}.toc"
+
+          if git diff --quiet -- "${ADDON_NAME}.toc"; then
+            echo "Version already up to date, nothing to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "${ADDON_NAME}.toc"
+            git commit -m "Bump version to ${{ steps.version.outputs.version }} [skip ci]"
+            # Uses the default GITHUB_TOKEN, so this push does not itself
+            # trigger another workflow run (GitHub suppresses that by design).
+            git push origin HEAD:main
+          fi
 
       - name: Stage addon files
         run: |
@@ -107,7 +155,8 @@ jobs:
             fi
           done < "${ADDON_NAME}.toc"
 
-          # Stamp the packaged .toc with the release version being built.
+          # Stamp the packaged .toc with the version being built, in case the
+          # commit step above was skipped (e.g. an unpublished test build).
           sed -i "s/^## Version:.*/## Version: ${{ steps.version.outputs.version }}/" "$STAGE/${ADDON_NAME}.toc"
 
       - name: Zip it
@@ -123,8 +172,9 @@ jobs:
           path: ${{ env.ADDON_NAME }}-${{ steps.version.outputs.version }}.zip
 
       - name: Create GitHub Release
-        if: github.ref_type == 'tag'
+        if: steps.version.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           files: ${{ env.ADDON_NAME }}-${{ steps.version.outputs.version }}.zip
           generate_release_notes: true

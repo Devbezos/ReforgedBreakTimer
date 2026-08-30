@@ -101,21 +101,18 @@ Requires Lua 5.1 (`lua.exe`/`luac.exe`) and `luacheck.exe` on PATH (or their def
 
 ### Releasing a new version
 
-A GitHub Actions workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) builds the downloadable `.zip` — nobody needs to zip anything by hand.
+A GitHub Actions workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) handles versioning and builds the downloadable `.zip` — there's no manual tagging and nobody needs to zip anything by hand.
 
-**To ship a real release:**
+**Releasing is automatic: every push to `main` ships a release.**
 
-1. Bump `## Version:` in `ReforgedBreakTimer.toc` if you want the source repo itself to reflect it (optional — the workflow overwrites the packaged copy's version to match the tag either way).
-2. Commit, then tag and push:
-   ```
-   git tag v3.1.0
-   git push origin v3.1.0
-   ```
-3. GitHub Actions syntax-checks and lints every `.lua` file, packages the `.toc` + the files it lists + `images/` (never `images-src/`, `scripts/`, or other repo tooling) into `ReforgedBreakTimer-3.1.0.zip`, and publishes it as a GitHub Release with that zip attached. That's the file end users download and drag into their AddOns folder.
+1. Merge or push your change to `main`.
+2. GitHub Actions syntax-checks and lints every `.lua` file. If that fails, nothing further happens — no version bump, no release.
+3. It looks up the most recently published release, **bumps the MINOR version by one and resets the patch to 0** (e.g. `1.2.3` → `1.3.0`), commits that new `## Version:` into `ReforgedBreakTimer.toc` on `main` (as `github-actions[bot]`, tagged `[skip ci]` so it doesn't loop), and tags it.
+4. It packages the `.toc` + the files it lists + `images/` (never `images-src/`, `scripts/`, or other repo tooling) into `ReforgedBreakTimer-<version>.zip`, and publishes a GitHub Release with that zip attached. That's the file end users download and drag into their AddOns folder.
 
-**To sanity-check a build without releasing it:** go to the repo's **Actions** tab → **Release** → **Run workflow** on the branch you want to test. It runs the same validate-and-package steps and uploads the zip as a workflow artifact instead of publishing a Release — nothing gets tagged or made public.
+Because every push to `main` bumps and releases, keep `main` protected/reviewed — a typo fix merged straight to `main` ships a new minor version just like a real feature would. Want a specific major or patch bump instead of the automatic minor bump? Edit `## Version:` in `ReforgedBreakTimer.toc` yourself in the same push — the workflow only auto-bumps when it doesn't find a newer version already staged... actually it always computes from the latest **published release**, not the `.toc`, so to jump to e.g. `2.0.0` you'd currently need to publish that release manually via the GitHub UI first, then subsequent auto-bumps continue from there. (If you want on-demand major/patch control built into the workflow itself, ask — it's a small addition.)
 
-If the Lua validation step fails (a syntax error or a `luacheck` finding), the whole workflow stops before anything is packaged or published.
+**To sanity-check a build without releasing it:** go to the repo's **Actions** tab → **Release** → **Run workflow** on the branch you want to test. It previews the same next-minor-version number (or an exact version you type in) and uploads the zip as a workflow artifact instead of publishing a Release or touching `main` — nothing gets committed, tagged, or made public.
 
 ### Files
 
