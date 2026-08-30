@@ -4,7 +4,7 @@ A WoW addon that pops up a random picture and a countdown the moment your raid's
 
 ## Install it
 
-1. Download the latest `.zip` from the [Releases page](https://github.com/Devbezos/reforged-break-timer/releases/latest).
+1. Download the latest `.zip` from the [Releases page](https://github.com/Devbezos/ReforgedBreakTimer/releases/latest).
 2. Right-click the downloaded `.zip` and **Extract All**.
 3. Find your WoW AddOns folder. It's usually:
 
