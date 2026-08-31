@@ -7,6 +7,7 @@ ns.images = {
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\1283661533057908760 (1)", name = "1283661533057908760 (1)" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\1522082525499887677", name = "1522082525499887677" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\IMG_3563", name = "Img 3563" },
+    { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\iondiaz", name = "Iondiaz" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\l;mf;klsdmlkfsd", name = "L;Mf;Klsdmlkfsd" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\macro2", name = "Macro2" },
 }

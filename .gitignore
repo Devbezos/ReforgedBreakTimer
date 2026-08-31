@@ -1,2 +1,11 @@
 Thumbs.db
 .DS_Store
+
+# Raw source pictures before conversion -- local staging only, never
+# uploaded. images/ (the converted .tga/.blp output) ships instead.
+/images-src/*.png
+/images-src/*.jpg
+/images-src/*.jpeg
+/images-src/*.bmp
+/images-src/*.gif
+/images-src/*.webp
