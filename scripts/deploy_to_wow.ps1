@@ -204,6 +204,11 @@ foreach ($wowAddonPath in $WowAddonPaths) {
     # copied -- it's a local staging folder only, never shipped to WoW.
     Copy-RepoDirectory -RelativePath "images" -DestinationRoot $wowAddonPath
 
+    # textures/ holds non-rotating UI chrome (e.g. the logo), same deal --
+    # referenced by absolute path, not a TOC entry. textures-src/ is local
+    # staging only and is intentionally NOT copied.
+    Copy-RepoDirectory -RelativePath "textures" -DestinationRoot $wowAddonPath
+
     if (-not $NoDevSuffix) {
         $destToc = Join-Path $wowAddonPath "ReforgedBreakTimer.toc"
         $tocText = Get-Content -Raw -LiteralPath $destToc

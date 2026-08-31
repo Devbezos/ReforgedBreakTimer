@@ -131,8 +131,8 @@ jobs:
           mkdir -p "$STAGE"
 
           # Ship exactly what scripts/deploy_to_wow.ps1 deploys locally: the
-          # .toc, every file it lists, and images/ -- never images-src/,
-          # scripts/, or other repo tooling.
+          # .toc, every file it lists, and images/ + textures/ -- never
+          # images-src/, textures-src/, scripts/, or other repo tooling.
           cp "${ADDON_NAME}.toc" "$STAGE/"
           # The `|| [ -n "$line" ]` clause is required: without it, `read`
           # silently skips a final line that has no trailing newline (which
@@ -144,6 +144,7 @@ jobs:
             cp "$line" "$STAGE/"
           done < "${ADDON_NAME}.toc"
           cp -r images "$STAGE/"
+          cp -r textures "$STAGE/"
 
           # Fail loudly if a listed file didn't make it into the package,
           # rather than shipping a broken zip a second time.
