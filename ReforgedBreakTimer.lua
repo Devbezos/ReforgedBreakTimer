@@ -8,8 +8,6 @@ ns.images = ns.images or {} -- populated by Images.lua
 local currentImagePath
 local endTime = 0
 local wasBreakActive = false
-local imageSwitchInterval = 0
-local nextImageSwitchTime = 0
 
 --------------------------------------------------------------------------
 -- Image selection
@@ -116,30 +114,17 @@ local function onBreakUpdate(self, elapsed)
         return
     end
     updateDisplay(remaining, self.totalDuration)
-
-    if imageSwitchInterval > 0 and GetTime() >= nextImageSwitchTime then
-        ns.ChooseRandomImage()
-        nextImageSwitchTime = GetTime() + imageSwitchInterval
-    end
 end
 
 -- Shows the break frame with a random image and starts its countdown.
+-- The image stays static for the whole break; a new one is only picked
+-- the next time a break starts.
 -- `remaining`/`total` are seconds, as reported by BigWigs.
 function ns.ShowBreak(remaining, total)
     local frame = ReforgedBreakTimerFrame
     endTime = GetTime() + remaining
     frame.totalDuration = total
     frame.tick = 0
-
-    -- Cycle through every enabled picture over the course of the break,
-    -- roughly once each: switch interval = break length / picture count.
-    local enabledCount = #ns.GetEnabledImages()
-    if enabledCount > 1 and total > 0 then
-        imageSwitchInterval = math.max(2, total / enabledCount)
-        nextImageSwitchTime = GetTime() + imageSwitchInterval
-    else
-        imageSwitchInterval = 0
-    end
 
     ns.ChooseRandomImage()
     frame.status:SetText("Break in progress")
@@ -153,7 +138,6 @@ function ns.HideBreak()
     local frame = ReforgedBreakTimerFrame
     frame:Hide()
     frame.status:SetText("Waiting for next break")
-    imageSwitchInterval = 0
 end
 
 --------------------------------------------------------------------------

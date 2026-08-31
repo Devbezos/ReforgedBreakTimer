@@ -2,7 +2,7 @@ name: Release
 
 # Builds a WoW-installable ReforgedBreakTimer-<version>.zip.
 #
-# - Every push to main auto-bumps the MINOR version (X.Y.Z -> X.(Y+1).0) from
+# - Every push to main auto-bumps the PATCH version (X.Y.Z -> X.Y.(Z+1)) from
 #   the latest published release, commits that bump into ReforgedBreakTimer.toc,
 #   tags it, and publishes a GitHub Release with the zip attached. There is no
 #   manual "git tag" step -- pushing to main IS the release.
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp on a manual test build (e.g. 1.5.0). Leave blank to preview the next auto-bumped minor version without publishing anything."
+        description: "Version to stamp on a manual test build (e.g. 1.5.0). Leave blank to preview the next auto-bumped patch version without publishing anything."
         required: false
         default: ""
 
@@ -71,7 +71,7 @@ jobs:
           # A manual test run can pin an exact version to preview; otherwise
           # (both for a real push-to-main release AND for an unpinned manual
           # test run) the next version is always the latest published
-          # release's minor version, bumped by one, patch reset to 0.
+          # release's patch version, bumped by one.
           INPUT_VERSION="${{ github.event.inputs.version }}"
           if [ -n "$INPUT_VERSION" ]; then
             VERSION="$INPUT_VERSION"
@@ -87,9 +87,11 @@ jobs:
             MAJOR="${BASE%%.*}"
             REST="${BASE#*.}"
             MINOR="${REST%%.*}"
+            PATCH="${REST#*.}"
             MAJOR="${MAJOR:-0}"
             MINOR="${MINOR:-0}"
-            VERSION="${MAJOR}.$((MINOR + 1)).0"
+            PATCH="${PATCH:-0}"
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
 
             echo "Latest published release: $LATEST_TAG"
           fi
