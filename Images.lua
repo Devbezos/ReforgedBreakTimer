@@ -14,6 +14,7 @@ ns.images = {
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\hydrohat", name = "Hydrohat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\iondiaz", name = "Iondiaz" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\lescat", name = "Lescat" },
+    { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\lindsaycat", name = "Lindsaycat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\macrohat", name = "Macrohat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\pogwilkz", name = "Pogwilkz" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\quazi", name = "Quazi" },

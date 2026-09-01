@@ -23,6 +23,13 @@ local currentImagePath
 local endTime = 0
 local wasBreakActive = false
 
+-- The (startTime, totalSeconds) pair from BigWigs3DB.breakTime that the poll
+-- fallback last acted on, so it can tell a genuinely new/extended break
+-- (BigWigs overwriting that table with new values while one's already
+-- showing -- e.g. someone re-calling the break for a longer duration) apart
+-- from re-polling the same still-active break tick after tick.
+local lastPolledBreakStart, lastPolledBreakTotal
+
 -- Shuffled "bag" of not-yet-shown images for the current cycle -- refilled
 -- and reshuffled once it runs dry, so every enabled picture gets shown
 -- once before any of them repeat, instead of a pure random pick that could
@@ -322,8 +329,18 @@ local function checkBreak()
         local startTime, totalSeconds = tbl[1], tbl[2]
         local remaining = totalSeconds - (time() - startTime)
         if remaining > 0 then
-            if not wasBreakActive then
+            -- Refresh not just on the "no break -> break" transition, but
+            -- also whenever BigWigs has overwritten breakTime with a
+            -- different start/duration while one was already showing --
+            -- otherwise extending an in-progress break (e.g. 5 min -> 10
+            -- min) would never be reflected, just keep counting down to the
+            -- original end time.
+            local isNewOrChanged = not wasBreakActive
+                or startTime ~= lastPolledBreakStart
+                or totalSeconds ~= lastPolledBreakTotal
+            if isNewOrChanged then
                 wasBreakActive = true
+                lastPolledBreakStart, lastPolledBreakTotal = startTime, totalSeconds
                 ns.ShowBreak(remaining, totalSeconds)
             end
             return
@@ -332,6 +349,7 @@ local function checkBreak()
 
     if wasBreakActive then
         wasBreakActive = false
+        lastPolledBreakStart, lastPolledBreakTotal = nil, nil
         ns.HideBreak()
     end
 end
@@ -351,10 +369,20 @@ local function hookBigWigsMessages()
     listener:RegisterMessage("BigWigs_StartBreak", function(_, _, seconds)
         wasBreakActive = true
         ns.ShowBreak(seconds, seconds)
+
+        -- Keep the poll fallback's view in sync with what we just showed,
+        -- so it doesn't mistake this for a change and redundantly re-fire
+        -- on its very next tick (BigWigs writes breakTime before firing
+        -- this message, so it should already reflect this same break).
+        local tbl = BigWigs3DB and BigWigs3DB.breakTime
+        if tbl then
+            lastPolledBreakStart, lastPolledBreakTotal = tbl[1], tbl[2]
+        end
     end)
 
     listener:RegisterMessage("BigWigs_StopBreak", function()
         wasBreakActive = false
+        lastPolledBreakStart, lastPolledBreakTotal = nil, nil
         ns.HideBreak()
     end)
 
