@@ -20,6 +20,7 @@ ns.images = {
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\quazi", name = "Quazi" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\rivenz", name = "Rivenz" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\smashcat", name = "Smashcat" },
+    { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\sneascat", name = "Sneascat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\valcats", name = "Valcats" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\yipzhat", name = "Yipzhat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\hump-day-happy-meeting\\0001", name = "Hump Day Happy Meeting", delay = 0.0835593220338983, frames = {
