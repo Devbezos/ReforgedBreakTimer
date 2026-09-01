@@ -2,7 +2,7 @@
 ## Title: Reforged Break Timer
 ## Notes: Pops up a random image whenever BigWigs calls a break, with an options panel to pick which images can show.
 ## Author: Reforged Tools
-## Version: 1.6.7
+## Version: 1.6.8
 ## SavedVariables: ReforgedBreakTimerDB
 ## OptionalDeps: BigWigs
 
