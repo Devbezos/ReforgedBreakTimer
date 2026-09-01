@@ -57,6 +57,11 @@ local PRELOAD_BATCH_INTERVAL = 0.05
 
 local preloadPool = {}
 
+-- The ticker driving the current preload pass, if one's in progress -- kept
+-- so a fresh pass (e.g. a break ending again shortly after) can cancel a
+-- still-running one instead of both fighting over the same texture pool.
+local preloadTicker
+
 local function getPreloadTexture(slot)
     local tex = preloadPool[slot]
     if not tex then
@@ -76,6 +81,11 @@ local function getPreloadTexture(slot)
 end
 
 local function preloadAnimatedImages()
+    if preloadTicker then
+        preloadTicker:Cancel()
+        preloadTicker = nil
+    end
+
     local paths = {}
     for _, entry in ipairs(ns.images) do
         if entry.frames then
@@ -90,11 +100,11 @@ local function preloadAnimatedImages()
     end
 
     local nextIndex = 1
-    local ticker
-    ticker = C_Timer.NewTicker(PRELOAD_BATCH_INTERVAL, function()
+    preloadTicker = C_Timer.NewTicker(PRELOAD_BATCH_INTERVAL, function()
         for slot = 1, PRELOAD_POOL_SIZE do
             if nextIndex > #paths then
-                ticker:Cancel()
+                preloadTicker:Cancel()
+                preloadTicker = nil
                 return
             end
             getPreloadTexture(slot):SetTexture(paths[nextIndex])
@@ -295,6 +305,13 @@ end
 function ns.HideBreak()
     local frame = ReforgedBreakTimerFrame
     frame:Hide()
+
+    -- Re-warm the decoded-frame cache once the break is over rather than
+    -- once at login: WoW can evict textures preloaded hours earlier under
+    -- the memory pressure of a raid, so refreshing them right after each
+    -- break -- with the whole gap until the next one to finish -- is what
+    -- actually keeps the *next* break's animation flicker-free.
+    preloadAnimatedImages()
 end
 
 --------------------------------------------------------------------------
@@ -494,8 +511,6 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     -- only appears on its own when the message hook (or, failing that,
     -- checkBreak()) detects one.
     frame:Hide()
-
-    preloadAnimatedImages()
 
     -- ## OptionalDeps: BigWigs in the .toc means BigWigs (and its bundled
     -- AceEvent-3.0) loads before we do, so this should succeed whenever
