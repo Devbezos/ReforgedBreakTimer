@@ -3,12 +3,10 @@ distinct from images\, which holds the rotating pictures. Everything in
 here gets deployed straight into your WoW AddOns folder.
 
   - logo.tga: shown in the top-left corner of the popup.
-  - next_image.tga: the dev-only "rotate to next image" button's icon
-    (only ever shown when the deployed ## Version has a -dev suffix, i.e.
-    a local test deploy via scripts/deploy_to_wow.ps1 -- never in a real
-    release). White on transparent so it reads against the popup's dark
-    background and can be tinted (e.g. its pushed state uses the accent
-    green) via SetVertexColor.
+  - next_image.tga: the "show a different image" rotate button's icon,
+    beside the close button. White on transparent so it reads against the
+    popup's dark background and can be tinted (e.g. its pushed state uses
+    the accent green) via SetVertexColor.
 
 Got a PNG/JPG/BMP/GIF/WEBP instead? Don't drop it in here -- put it in
 ..\textures-src\ and convert it with ffmpeg, e.g.:

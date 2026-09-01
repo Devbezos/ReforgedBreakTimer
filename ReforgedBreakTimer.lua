@@ -9,16 +9,6 @@ local PROGRESS_BAR_HEIGHT = 28
 
 ns.images = ns.images or {} -- populated by Images.lua
 
--- True for a local test deploy (scripts/deploy_to_wow.ps1 stamps "-dev" onto
--- the ## Version in the .toc it copies into your WoW AddOns folder; a real
--- release zip never has that suffix), used to gate dev-only UI like the
--- "next image" button below.
-local function IsDevBuild()
-    local getMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
-    local version = getMetadata and getMetadata(addonName, "Version")
-    return version ~= nil and version:match("%-dev$") ~= nil
-end
-
 local currentImagePath
 local endTime = 0
 local wasBreakActive = false
@@ -420,25 +410,22 @@ local function createFrame()
     frame.closeButton:SetPoint("TOPRIGHT", -BUTTON_INSET, -BUTTON_INSET)
     frame.closeButton:SetScript("OnClick", function() frame:Hide() end)
 
-    -- Dev-only: a "next image" button beside the close button, for cycling
-    -- through pictures on demand while testing instead of waiting for real
-    -- breaks. Only exists on a local -dev deploy; never ships in a release.
-    if IsDevBuild() then
-        frame.devNextImageButton = CreateFrame("Button", nil, frame)
-        frame.devNextImageButton:SetSize(20, 20)
-        frame.devNextImageButton:SetPoint("RIGHT", frame.closeButton, "LEFT", 2, 0)
-        frame.devNextImageButton:SetNormalTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\next_image")
-        frame.devNextImageButton:SetPushedTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\next_image")
-        frame.devNextImageButton:GetPushedTexture():SetVertexColor(ACCENT_COLOR[1], ACCENT_COLOR[2], ACCENT_COLOR[3], 1)
-        frame.devNextImageButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        frame.devNextImageButton:SetScript("OnClick", function() ns.ChooseRandomImage() end)
-        frame.devNextImageButton:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("[Dev] Rotate to next image")
-            GameTooltip:Show()
-        end)
-        frame.devNextImageButton:SetScript("OnLeave", GameTooltip_Hide)
-    end
+    -- Rotate button, beside the close button, for cycling to a different
+    -- picture on demand instead of waiting for the next break.
+    frame.nextImageButton = CreateFrame("Button", nil, frame)
+    frame.nextImageButton:SetSize(20, 20)
+    frame.nextImageButton:SetPoint("RIGHT", frame.closeButton, "LEFT", 2, 0)
+    frame.nextImageButton:SetNormalTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\next_image")
+    frame.nextImageButton:SetPushedTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\next_image")
+    frame.nextImageButton:GetPushedTexture():SetVertexColor(ACCENT_COLOR[1], ACCENT_COLOR[2], ACCENT_COLOR[3], 1)
+    frame.nextImageButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    frame.nextImageButton:SetScript("OnClick", function() ns.ChooseRandomImage() end)
+    frame.nextImageButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Show a different image")
+        GameTooltip:Show()
+    end)
+    frame.nextImageButton:SetScript("OnLeave", GameTooltip_Hide)
 
     -- Logo, inset from the top-left corner so it sits inside the box.
     frame.logo = frame:CreateTexture(nil, "ARTWORK")
