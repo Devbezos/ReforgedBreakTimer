@@ -8,4 +8,5 @@
 
 Images.lua
 ReforgedBreakTimer.lua
+HeartyFeast.lua
 Options.lua

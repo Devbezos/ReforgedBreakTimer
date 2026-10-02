@@ -59,9 +59,33 @@ resetPositionButton:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 8, -20)
 resetPositionButton:SetText("Reset Frame Position")
 resetPositionButton:SetScript("OnClick", function() ns.ResetFramePosition() end)
 
+-- Hearty Feast alert section
+local heartyFeastHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+heartyFeastHeader:SetPoint("TOPLEFT", resetPositionButton, "BOTTOMLEFT", 8, -20)
+heartyFeastHeader:SetText("Hearty Feast Alert")
+
+local heartyFeastHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+heartyFeastHint:SetPoint("TOPLEFT", heartyFeastHeader, "BOTTOMLEFT", 0, -4)
+heartyFeastHint:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
+heartyFeastHint:SetJustifyH("LEFT")
+heartyFeastHint:SetText("Yells at you over text-to-speech the moment anyone drops a Hearty Feast, so it doesn't go to waste.")
+
+local heartyFeastCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+heartyFeastCheckbox:SetPoint("TOPLEFT", heartyFeastHint, "BOTTOMLEFT", 0, -8)
+heartyFeastCheckbox.Text:SetText("Announce Hearty Feast (TTS)")
+heartyFeastCheckbox:SetScript("OnClick", function(self)
+    ns.SetHeartyFeastTTSEnabled(self:GetChecked())
+end)
+
+local heartyFeastTestButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+heartyFeastTestButton:SetSize(90, 20)
+heartyFeastTestButton:SetPoint("LEFT", heartyFeastCheckbox.Text, "RIGHT", 12, 0)
+heartyFeastTestButton:SetText("Test")
+heartyFeastTestButton:SetScript("OnClick", function() ns.TestHeartyFeastAnnouncement() end)
+
 -- Section divider
 local imagesHeader = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-imagesHeader:SetPoint("TOPLEFT", resetPositionButton, "BOTTOMLEFT", 8, -20)
+imagesHeader:SetPoint("TOPLEFT", heartyFeastCheckbox, "BOTTOMLEFT", 8, -20)
 imagesHeader:SetText("Images shown on break")
 
 local imagesHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
@@ -137,6 +161,7 @@ end
 
 panel:SetScript("OnShow", function()
     buildImageList()
+    heartyFeastCheckbox:SetChecked(ns.IsHeartyFeastTTSEnabled())
 end)
 
 --------------------------------------------------------------------------

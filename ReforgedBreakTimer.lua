@@ -498,6 +498,9 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
 
     ReforgedBreakTimerDB = ReforgedBreakTimerDB or {}
     ReforgedBreakTimerDB.disabledImages = ReforgedBreakTimerDB.disabledImages or {}
+    if ReforgedBreakTimerDB.heartyFeastTTS == nil then
+        ReforgedBreakTimerDB.heartyFeastTTS = true
+    end
 
     local frame = createFrame()
 
