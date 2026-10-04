@@ -44,7 +44,7 @@ Want the popup to show your own raid's pictures instead of (or alongside) the de
 
 ### Easiest: swap an existing picture, no tools needed
 
-Every static picture the addon knows about is a `.tga` file in the `images/` folder — either in this repo, or inside your installed `...\AddOns\ReforgedBreakTimer\images\` folder. (An animated GIF is a same-named *subfolder* of numbered frames instead — see below.) Because the addon just points at that folder by filename, you can replace any of those `.tga` files with your own picture **as long as you keep the exact same filename** — nothing else needs to change, and you don't need PowerShell, ffmpeg, or to touch `Images.lua` at all.
+Every static picture the addon knows about is a `.tga` file in the `images/` folder — either in this repo, or inside your installed `...\AddOns\ReforgedBreakTimer\images\` folder. (An animated GIF is a same-named *subfolder* holding a sprite sheet instead — see below.) Because the addon just points at that folder by filename, you can replace any of those `.tga` files with your own picture **as long as you keep the exact same filename** — nothing else needs to change, and you don't need PowerShell, ffmpeg, or to touch `Images.lua` at all.
 
 1. Pick an existing image to replace, e.g. `images\macro2.tga`, and note its exact filename.
 2. Convert your picture to `.tga` (any free online PNG/JPG-to-TGA converter works, or use the included `ConvertImages.ps1` script described further down if you'd rather).
@@ -60,7 +60,7 @@ WoW addons run in a locked-down sandbox and can't read a folder's contents at ru
 **If your picture is already a `.tga` or `.blp` (or a pre-made animation folder):**
 
 1. Put it in `images/` (or delete a file/folder from there to remove that picture).
-2. Run `GenerateImages.ps1` (double-click it, or `./GenerateImages.ps1` in a PowerShell terminal here). It scans `images/` and rewrites `Images.lua` to match, turning `coffee_mug.tga` into the display name "Coffee Mug" (and a subfolder of numbered frames into an animated entry).
+2. Run `GenerateImages.ps1` (double-click it, or `./GenerateImages.ps1` in a PowerShell terminal here). It scans `images/` and rewrites `Images.lua` to match, turning `coffee_mug.tga` into the display name "Coffee Mug" (and a sprite-sheet subfolder into an animated entry).
 3. In-game: `/reload`, then toggle it on in the options panel if needed.
 
 **If it's a PNG/JPG/BMP/GIF/WEBP instead — converting a batch of pictures:**
@@ -69,9 +69,9 @@ WoW addons run in a locked-down sandbox and can't read a folder's contents at ru
 2. Run `./ConvertImages.ps1`. It converts each file to a same-named `.tga` in `images/` — via [ffmpeg](https://ffmpeg.org/) (must be on PATH; `winget install ffmpeg` if missing), downscaling anything larger than the addon's on-screen image box — then automatically runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1` to copy the updated addon into your local WoW AddOns folder(s).
 3. In-game: `/reload`.
 
-An **animated GIF** gets special treatment: WoW textures can't themselves animate, so the GIF is decomposed into a same-named `images/<name>/` folder of numbered frames (plus a `delay.txt`), and the addon flips through them in a loop while it's shown on screen — it actually plays, not just a static picture pulled from frame one. A GIF that turns out to only have one frame just becomes a normal static `.tga` instead.
+An **animated GIF** gets special treatment: WoW textures can't themselves animate, so the GIF's frames are packed into a single sprite sheet in a same-named `images/<name>/` folder (`sheet.tga`, plus a `sheet.txt` describing the grid and a `delay.txt`), and the addon steps through its cells in a loop while it's shown on screen — it actually plays, not just a static picture pulled from frame one. A GIF that turns out to only have one frame just becomes a normal static `.tga` instead.
 
-`images-src/` is only a staging folder — nothing in it is ever deployed to WoW, so raw source files never bloat the shipped addon. Only `images/` (the `.tga`/`.blp`/frame-folder output) goes out.
+`images-src/` is only a staging folder — nothing in it is ever deployed to WoW, so raw source files never bloat the shipped addon. Only `images/` (the `.tga`/`.blp`/sprite-sheet output) goes out.
 
 Useful `ConvertImages.ps1` flags: `-Force` (reconvert even if already converted), `-DeleteOriginals` (delete the source file from `images-src/` once converted), `-MaxDimension` (change the downscale target, default 178), `-MaxFrames` (cap how many frames an animated GIF keeps, default 60 — longer/higher-fps GIFs are thinned down to fit, keeping the same overall playback duration), `-SkipGenerate` (convert only, skip the `Images.lua` refresh and the deploy step), `-SkipDeploy` (convert and regenerate `Images.lua`, but skip deploying to WoW).
 
@@ -128,11 +128,11 @@ Because every push to `main` bumps and releases, keep `main` protected/reviewed 
 | `Options.lua` | The in-game options panel (Settings API, with a legacy fallback). |
 | `Images.lua` | Auto-generated list of available images — don't hand-edit this. |
 | `GenerateImages.ps1` | Scans `images/` and rewrites `Images.lua`. |
-| `ConvertImages.ps1` | Converts PNG/JPG/BMP/GIF/WEBP from `images-src/` to `.tga` (or, for an animated GIF, a frame subfolder) in `images/`, then runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1`. |
+| `ConvertImages.ps1` | Converts PNG/JPG/BMP/GIF/WEBP from `images-src/` to `.tga` (or, for an animated GIF, a sprite-sheet subfolder) in `images/`, then runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1`. |
 | `scripts/deploy_to_wow.ps1` | Dev-only: validates and copies the addon into a local WoW AddOns folder. |
 | `.github/workflows/release.yml` | CI: validates the addon and builds/publishes the release `.zip` (see [Releasing a new version](#releasing-a-new-version)). |
 | `.luacheckrc` | Lint config (ignores WoW's runtime-provided globals). |
-| `images/` | WoW-ready `.tga`/`.blp` files, plus subfolders of numbered frames for animated GIFs — this folder is what actually ships. |
+| `images/` | WoW-ready `.tga`/`.blp` files, plus a sprite-sheet subfolder per animated GIF — this folder is what actually ships. |
 | `images-src/` | Drop original PNG/JPG/etc. files here before converting — never deployed. |
 | `textures/` | WoW-ready `.tga`/`.blp` UI chrome (currently just the logo) — ships alongside `images/`. |
 | `textures-src/` | The logo's original source file — never deployed. |

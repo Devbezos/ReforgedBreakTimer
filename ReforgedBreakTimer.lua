@@ -27,7 +27,7 @@ local lastPolledBreakStart, lastPolledBreakTotal
 local imageQueue = {}
 
 -- Playback state for the current image, when it's an animated (GIF-sourced)
--- one: { frames = {path, ...}, delay = secondsPerFrame, frameIndex, elapsed }.
+-- one: { entry = imageEntry, delay = secondsPerFrame, frameIndex, elapsed }.
 -- nil whenever the current image is a plain static picture.
 local currentAnimation
 
@@ -35,82 +35,43 @@ local currentAnimation
 -- Image selection
 --------------------------------------------------------------------------
 
--- Every animated (GIF-sourced) image plays back by rapidly SetTexture-ing
--- between many small frame files; the first time any given frame file is
--- used, WoW has to load and decode it from disk, which is slow enough
--- relative to the per-frame delay to show up as a few seconds of flicker
--- before the animation settles down (once every frame's actually been
--- drawn once and is sitting in the texture cache). Loading every frame of
--- every animated image once, up front at addon load -- long before any
--- break can actually happen -- avoids ever paying that cost during real
--- playback.
+-- An animated (GIF-sourced) image ships as a single sprite sheet: every
+-- frame tiled left-to-right, top-to-bottom into a `columns` x `rows` grid
+-- (see ConvertImages.ps1). Playback only moves the texcoords around that
+-- one texture. Switching between dozens of separate frame files instead
+-- made WoW stream each one in on demand, which is what showed up as
+-- flicker no matter how they were preloaded.
 --
--- This has to actually get each frame drawn on screen at least once, not
--- just call SetTexture on it: an invisible (alpha 0) or instantly-replaced
--- texture may never trigger the real decode/GPU-upload work, since that's
--- tied to the draw pass, not the SetTexture call itself. So this uses a
--- small pool of real (if practically invisible) on-screen textures, and
--- staggers assigning new paths to them a handful at a time so each one
--- gets several actual rendered frames before it's reused for the next path.
-local PRELOAD_POOL_SIZE = 6
-local PRELOAD_BATCH_INTERVAL = 0.05
-
-local preloadPool = {}
-
--- The ticker driving the current preload pass, if one's in progress -- kept
--- so a fresh pass (e.g. a break ending again shortly after) can cancel a
--- still-running one instead of both fighting over the same texture pool.
-local preloadTicker
-
-local function getPreloadTexture(slot)
-    local tex = preloadPool[slot]
-    if not tex then
-        local holder = CreateFrame("Frame", nil, UIParent)
-        holder:SetSize(4, 4)
-        holder:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -(slot * 5), 2)
-        -- Low but non-zero: alpha 0 can skip the actual draw (and so the
-        -- decode/upload it would trigger) entirely; this stays imperceptible
-        -- while still being a real draw target.
-        holder:SetAlpha(0.02)
-        holder:Show()
-        tex = holder:CreateTexture(nil, "BACKGROUND")
-        tex:SetAllPoints()
-        preloadPool[slot] = tex
-    end
-    return tex
+-- Returns the (left, right, top, bottom) texcoords of 1-based frame `index`.
+function ns.GetFrameTexCoords(entry, index)
+    local column = (index - 1) % entry.columns
+    local row = math.floor((index - 1) / entry.columns)
+    -- Pulled in by half a texel so bilinear filtering never bleeds in an
+    -- edge of the neighbouring cell.
+    local insetU = 0.5 / (entry.columns * entry.frameWidth)
+    local insetV = 0.5 / (entry.rows * entry.frameHeight)
+    return column / entry.columns + insetU, (column + 1) / entry.columns - insetU,
+        row / entry.rows + insetV, (row + 1) / entry.rows - insetV
 end
 
-local function preloadAnimatedImages()
-    if preloadTicker then
-        preloadTicker:Cancel()
-        preloadTicker = nil
-    end
+-- Keeps every sprite sheet assigned to a tiny on-screen texture for the
+-- whole session, so it's already loaded when a break picks it rather than
+-- streaming in during the first moments of playback. These have to actually
+-- be drawn -- an alpha 0 or hidden texture can skip the load entirely --
+-- hence the near-invisible (but non-zero) alpha.
+local function keepSheetsLoaded()
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder:SetSize(4, 4)
+    holder:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -2, 2)
+    holder:SetAlpha(0.02)
 
-    local paths = {}
     for _, entry in ipairs(ns.images) do
         if entry.frames then
-            for _, framePath in ipairs(entry.frames) do
-                paths[#paths + 1] = framePath
-            end
+            local tex = holder:CreateTexture(nil, "BACKGROUND")
+            tex:SetAllPoints()
+            tex:SetTexture(entry.path)
         end
     end
-
-    if #paths == 0 then
-        return
-    end
-
-    local nextIndex = 1
-    preloadTicker = C_Timer.NewTicker(PRELOAD_BATCH_INTERVAL, function()
-        for slot = 1, PRELOAD_POOL_SIZE do
-            if nextIndex > #paths then
-                preloadTicker:Cancel()
-                preloadTicker = nil
-                return
-            end
-            getPreloadTexture(slot):SetTexture(paths[nextIndex])
-            nextIndex = nextIndex + 1
-        end
-    end)
 end
 
 -- Returns the list of images the user has not disabled in the options panel.
@@ -175,6 +136,7 @@ function ns.ChooseRandomImage()
         currentAnimation = nil
         imageQueue = {}
         ReforgedBreakTimerFrame.image:SetTexture(FALLBACK_IMAGE)
+        ReforgedBreakTimerFrame.image:SetTexCoord(0, 1, 0, 1)
         return
     end
 
@@ -192,20 +154,23 @@ function ns.ChooseRandomImage()
     local choice = table.remove(imageQueue)
     currentImagePath = choice.path
 
+    local image = ReforgedBreakTimerFrame.image
+    image:SetTexture(choice.path)
+
     if choice.frames then
         -- Animated (GIF-sourced) image: play its frames in a loop, starting
         -- from the first one. See advanceAnimation, driven from onBreakUpdate.
         currentAnimation = {
-            frames = choice.frames,
+            entry = choice,
             delay = math.max(choice.delay or 0.1, 0.02),
             frameIndex = 1,
             elapsed = 0,
         }
+        image:SetTexCoord(ns.GetFrameTexCoords(choice, 1))
     else
         currentAnimation = nil
+        image:SetTexCoord(0, 1, 0, 1)
     end
-
-    ReforgedBreakTimerFrame.image:SetTexture(choice.path)
 end
 
 -- Steps any currently-playing GIF animation forward by `elapsed` seconds,
@@ -221,12 +186,12 @@ local function advanceAnimation(elapsed)
     local changed = false
     while anim.elapsed >= anim.delay do
         anim.elapsed = anim.elapsed - anim.delay
-        anim.frameIndex = (anim.frameIndex % #anim.frames) + 1
+        anim.frameIndex = (anim.frameIndex % anim.entry.frames) + 1
         changed = true
     end
 
     if changed then
-        ReforgedBreakTimerFrame.image:SetTexture(anim.frames[anim.frameIndex])
+        ReforgedBreakTimerFrame.image:SetTexCoord(ns.GetFrameTexCoords(anim.entry, anim.frameIndex))
     end
 end
 
@@ -305,13 +270,6 @@ end
 function ns.HideBreak()
     local frame = ReforgedBreakTimerFrame
     frame:Hide()
-
-    -- Re-warm the decoded-frame cache once the break is over rather than
-    -- once at login: WoW can evict textures preloaded hours earlier under
-    -- the memory pressure of a raid, so refreshing them right after each
-    -- break -- with the whole gap until the next one to finish -- is what
-    -- actually keeps the *next* break's animation flicker-free.
-    preloadAnimatedImages()
 end
 
 --------------------------------------------------------------------------
@@ -514,6 +472,8 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     -- only appears on its own when the message hook (or, failing that,
     -- checkBreak()) detects one.
     frame:Hide()
+
+    keepSheetsLoaded()
 
     -- ## OptionalDeps: BigWigs in the .toc means BigWigs (and its bundled
     -- AceEvent-3.0) loads before we do, so this should succeed whenever

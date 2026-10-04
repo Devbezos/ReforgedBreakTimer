@@ -17,11 +17,12 @@
     left alone -- this never upscales.
 
     .gif files are treated specially: since a WoW texture can't itself be animated, an
-    animated GIF is instead decomposed into a same-named subfolder of numbered frame
-    .tga files (e.g. images\wave\0001.tga, 0002.tga, ...) plus a delay.txt recording the
-    (uniform) per-frame delay in seconds, and the addon cycles through them at runtime to
-    play it back. A GIF with more than -MaxFrames frames is thinned down to fit, since
-    every frame is a separate file shipped with the addon. A non-animated (single-frame)
+    animated GIF is instead decomposed into frames and packed into a same-named
+    subfolder holding one sprite sheet (e.g. images\wave\sheet.tga), a sheet.txt
+    describing its grid, and a delay.txt recording the (uniform) per-frame delay in
+    seconds; the addon steps through the sheet's cells at runtime to play it back. A GIF
+    with more than -MaxFrames frames is thinned down to fit, since every frame adds to
+    the sheet's size. A non-animated (single-frame)
     GIF converts to a plain .tga like any other format instead.
 
     Workflow:
@@ -120,9 +121,10 @@ function Convert-StaticImage {
     return $LASTEXITCODE -eq 0
 }
 
-# Decomposes an animated GIF into DestDir\0001.tga, 0002.tga, ... plus a delay.txt
-# holding the (uniform) per-frame delay in seconds. Returns $false (and cleans up
-# after itself) if ffmpeg/ffprobe couldn't get usable frames out of it.
+# Decomposes an animated GIF into DestDir\sheet.tga (every frame tiled into one
+# sprite sheet), a sheet.txt describing that grid, and a delay.txt holding the
+# (uniform) per-frame delay in seconds. Returns $false (and cleans up after itself)
+# if ffmpeg/ffprobe couldn't get usable frames out of it.
 function Convert-AnimatedGif {
     param($SourceFile, $DestDir)
 
@@ -176,6 +178,26 @@ function Convert-AnimatedGif {
     $delayText = $delaySeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText((Join-Path $DestDir 'delay.txt'), $delayText, $utf8NoBom)
+
+    # Pack the frames into a single sprite sheet (left-to-right, top-to-bottom)
+    # and ship only that. Swapping SetTexture between dozens of separate files
+    # makes WoW stream each one in on demand, which shows up as flicker; with
+    # one sheet the addon loads a single texture and just moves its texcoords.
+    $firstFrameBytes = [System.IO.File]::ReadAllBytes($writtenFrames[0].FullName)
+    $frameWidth  = [BitConverter]::ToUInt16($firstFrameBytes, 12)
+    $frameHeight = [BitConverter]::ToUInt16($firstFrameBytes, 14)
+    $columns = [int][Math]::Ceiling([Math]::Sqrt($writtenFrames.Count))
+    $rows    = [int][Math]::Ceiling($writtenFrames.Count / $columns)
+
+    & $ffmpeg.Source -y -framerate 1 -i $framePattern -vf "tile=${columns}x${rows}" -frames:v 1 -pix_fmt bgra -rle 0 (Join-Path $DestDir 'sheet.tga') -loglevel error
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $DestDir -Recurse -Force
+        return $false
+    }
+    $writtenFrames | Remove-Item -Force
+
+    $sheetText = "frames=$($writtenFrames.Count)`ncolumns=$columns`nrows=$rows`nwidth=$frameWidth`nheight=$frameHeight`n"
+    [System.IO.File]::WriteAllText((Join-Path $DestDir 'sheet.txt'), $sheetText, $utf8NoBom)
 
     return $true
 }
