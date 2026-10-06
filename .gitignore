@@ -9,6 +9,7 @@ Thumbs.db
 /images-src/*.bmp
 /images-src/*.gif
 /images-src/*.webp
+/images-src/*.mp4
 
 # Same idea for UI chrome assets (e.g. the logo) -- textures/ (the
 # converted .tga output) ships instead.

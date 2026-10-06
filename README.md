@@ -63,17 +63,17 @@ WoW addons run in a locked-down sandbox and can't read a folder's contents at ru
 2. Run `GenerateImages.ps1` (double-click it, or `./GenerateImages.ps1` in a PowerShell terminal here). It scans `images/` and rewrites `Images.lua` to match, turning `coffee_mug.tga` into the display name "Coffee Mug" (and a sprite-sheet subfolder into an animated entry).
 3. In-game: `/reload`, then toggle it on in the options panel if needed.
 
-**If it's a PNG/JPG/BMP/GIF/WEBP instead — converting a batch of pictures:**
+**If it's a PNG/JPG/BMP/GIF/WEBP/MP4 instead — converting a batch of pictures:**
 
 1. Put it in `images-src/` (not `images/`).
 2. Run `./ConvertImages.ps1`. It converts each file to a same-named `.tga` in `images/` — via [ffmpeg](https://ffmpeg.org/) (must be on PATH; `winget install ffmpeg` if missing), downscaling anything larger than the addon's on-screen image box — then automatically runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1` to copy the updated addon into your local WoW AddOns folder(s).
 3. In-game: `/reload`.
 
-An **animated GIF** gets special treatment: WoW textures can't themselves animate, so the GIF's frames are packed into a single sprite sheet in a same-named `images/<name>/` folder (`sheet.tga`, plus a `sheet.txt` describing the grid and a `delay.txt`), and the addon steps through its cells in a loop while it's shown on screen — it actually plays, not just a static picture pulled from frame one. A GIF that turns out to only have one frame just becomes a normal static `.tga` instead.
+An **animated GIF** gets special treatment: WoW textures can't themselves animate, so the GIF's frames are packed into a single sprite sheet in a same-named `images/<name>/` folder (`sheet.tga`, plus a `sheet.txt` describing the grid and a `delay.txt`), and the addon steps through its cells in a loop while it's shown on screen — it actually plays, not just a static picture pulled from frame one. A GIF that turns out to only have one frame just becomes a normal static `.tga` instead. An **MP4** clip is handled the same way as an animated GIF (audio is dropped) — trim it down to the bit you want first, since anything over `-MaxFrames` gets thinned to a lower frame rate.
 
 `images-src/` is only a staging folder — nothing in it is ever deployed to WoW, so raw source files never bloat the shipped addon. Only `images/` (the `.tga`/`.blp`/sprite-sheet output) goes out.
 
-Useful `ConvertImages.ps1` flags: `-Force` (reconvert even if already converted), `-DeleteOriginals` (delete the source file from `images-src/` once converted), `-MaxDimension` (change the downscale target, default 178), `-MaxFrames` (cap how many frames an animated GIF keeps, default 60 — longer/higher-fps GIFs are thinned down to fit, keeping the same overall playback duration), `-SkipGenerate` (convert only, skip the `Images.lua` refresh and the deploy step), `-SkipDeploy` (convert and regenerate `Images.lua`, but skip deploying to WoW).
+Useful `ConvertImages.ps1` flags: `-Force` (reconvert even if already converted), `-DeleteOriginals` (delete the source file from `images-src/` once converted), `-MaxDimension` (change the downscale target, default 178), `-MaxFrames` (cap how many frames an animated GIF/MP4 keeps, default 60 — longer/higher-fps clips are thinned down to fit, keeping the same overall playback duration), `-SkipGenerate` (convert only, skip the `Images.lua` refresh and the deploy step), `-SkipDeploy` (convert and regenerate `Images.lua`, but skip deploying to WoW).
 
 Pushing a version tag (see [Releasing a new version](#releasing-a-new-version) below) still has GitHub build a new zip anyone can download.
 
@@ -128,7 +128,7 @@ Because every push to `main` bumps and releases, keep `main` protected/reviewed 
 | `Options.lua` | The in-game options panel (Settings API, with a legacy fallback). |
 | `Images.lua` | Auto-generated list of available images — don't hand-edit this. |
 | `GenerateImages.ps1` | Scans `images/` and rewrites `Images.lua`. |
-| `ConvertImages.ps1` | Converts PNG/JPG/BMP/GIF/WEBP from `images-src/` to `.tga` (or, for an animated GIF, a sprite-sheet subfolder) in `images/`, then runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1`. |
+| `ConvertImages.ps1` | Converts PNG/JPG/BMP/GIF/WEBP/MP4 from `images-src/` to `.tga` (or, for an animated GIF/MP4, a sprite-sheet subfolder) in `images/`, then runs `GenerateImages.ps1`, then `scripts/deploy_to_wow.ps1`. |
 | `scripts/deploy_to_wow.ps1` | Dev-only: validates and copies the addon into a local WoW AddOns folder. |
 | `.github/workflows/release.yml` | CI: validates the addon and builds/publishes the release `.zip` (see [Releasing a new version](#releasing-a-new-version)). |
 | `.luacheckrc` | Lint config (ignores WoW's runtime-provided globals). |

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Converts PNG/JPG/BMP/GIF/WEBP files from images-src\ into WoW-ready .tga files in
+    Converts PNG/JPG/BMP/GIF/WEBP/MP4 files from images-src\ into WoW-ready .tga files in
     images\, regenerates Images.lua, then deploys the addon to your local WoW install.
 
 .DESCRIPTION
@@ -16,19 +16,20 @@
     written as .tga, keeping file sizes down. Images already at or below that size are
     left alone -- this never upscales.
 
-    .gif files are treated specially: since a WoW texture can't itself be animated, an
-    animated GIF is instead decomposed into frames and packed into a same-named
-    subfolder holding one sprite sheet (e.g. images\wave\sheet.tga), a sheet.txt
-    describing its grid, and a delay.txt recording the (uniform) per-frame delay in
-    seconds; the addon steps through the sheet's cells at runtime to play it back. A GIF
-    with more than -MaxFrames frames is thinned down to fit, since every frame adds to
-    the sheet's size. A non-animated (single-frame)
-    GIF converts to a plain .tga like any other format instead.
+    .gif and .mp4 files are treated specially: since a WoW texture can't itself be
+    animated, an animated GIF or video clip is instead decomposed into frames and packed
+    into a same-named subfolder holding one sprite sheet (e.g. images\wave\sheet.tga), a
+    sheet.txt describing its grid, and a delay.txt recording the (uniform) per-frame
+    delay in seconds; the addon steps through the sheet's cells at runtime to play it
+    back. Anything with more than -MaxFrames frames is thinned down to fit, since every
+    frame adds to the sheet's size -- so trim a long video down to the part you want
+    first. Video audio is dropped. A non-animated (single-frame) GIF converts to a plain
+    .tga like any other format instead.
 
     Workflow:
-      1. Drop .png/.jpg/.jpeg/.bmp/.gif/.webp files into images-src\.
-      2. Run this script. Each one becomes a same-named .tga (or, for an animated GIF, a
-         same-named subfolder of frames) in images\, GenerateImages.ps1 runs automatically
+      1. Drop .png/.jpg/.jpeg/.bmp/.gif/.webp/.mp4 files into images-src\.
+      2. Run this script. Each one becomes a same-named .tga (or, for an animated GIF or
+         MP4, a same-named sprite-sheet subfolder) in images\, GenerateImages.ps1 runs automatically
          afterward to refresh Images.lua, and scripts/deploy_to_wow.ps1 runs after that to
          copy the updated addon into your local WoW AddOns folder(s).
       3. In-game, type /reload (or fully relaunch WoW).
@@ -54,15 +55,16 @@
     Don't automatically run scripts/deploy_to_wow.ps1 after regenerating Images.lua.
 
 .PARAMETER MaxDimension
-    Largest width/height (in pixels) a converted image (or GIF frame) is allowed to
+    Largest width/height (in pixels) a converted image (or animation frame) is allowed to
     keep, preserving aspect ratio. Defaults to 178, matching the addon's on-screen image
     box. Only ever shrinks -- an image already smaller than this is left at its original
     size.
 
 .PARAMETER MaxFrames
-    Largest number of frames an animated GIF is allowed to keep. Defaults to 60. A GIF
-    with more frames than this is evenly thinned down (its overall playback duration is
-    preserved, just at a lower frame rate) since every frame ships as its own file.
+    Largest number of frames an animated GIF or MP4 is allowed to keep. Defaults to 60.
+    Anything with more frames than this is evenly thinned down (its overall playback
+    duration is preserved, just at a lower frame rate) since every frame adds to the
+    sprite sheet's size.
 
 .EXAMPLE
     ./ConvertImages.ps1
@@ -86,7 +88,9 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sourceDir  = Join-Path $scriptRoot 'images-src'
 $imagesDir  = Join-Path $scriptRoot 'images'
-$sourceExtensions = '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'
+$sourceExtensions = '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4'
+# Formats that can hold multiple frames, and so go through Convert-Animation.
+$animatedExtensions = '.gif', '.mp4'
 
 if (-not (Test-Path $sourceDir)) {
     New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
@@ -102,12 +106,12 @@ if (-not $ffmpeg) {
 }
 $ffprobe = Get-Command 'ffprobe' -ErrorAction SilentlyContinue
 if (-not $ffprobe) {
-    throw "ffprobe was not found on PATH (it's needed to detect animated GIFs). It " +
+    throw "ffprobe was not found on PATH (it's needed to detect animated GIFs/MP4s). It " +
           "ships alongside ffmpeg in every standard build -- reinstall ffmpeg if you're " +
           "missing it."
 }
 
-# Converts a single still image (any non-GIF format, or a non-animated GIF) to a
+# Converts a single still image (any non-animated format, or a single-frame GIF) to a
 # same-named .tga, downscaled to fit MaxDimension x MaxDimension.
 function Convert-StaticImage {
     param($SourceFile, $DestPath)
@@ -121,11 +125,11 @@ function Convert-StaticImage {
     return $LASTEXITCODE -eq 0
 }
 
-# Decomposes an animated GIF into DestDir\sheet.tga (every frame tiled into one
+# Decomposes an animated GIF or MP4 into DestDir\sheet.tga (every frame tiled into one
 # sprite sheet), a sheet.txt describing that grid, and a delay.txt holding the
 # (uniform) per-frame delay in seconds. Returns $false (and cleans up after itself)
 # if ffmpeg/ffprobe couldn't get usable frames out of it.
-function Convert-AnimatedGif {
+function Convert-Animation {
     param($SourceFile, $DestDir)
 
     if (Test-Path -LiteralPath $DestDir) {
@@ -149,7 +153,7 @@ function Convert-AnimatedGif {
     }
 
     $framePattern = Join-Path $DestDir '%04d.tga'
-    & $ffmpeg.Source -y -i $SourceFile.FullName -vsync 0 -vf $videoFilter -pix_fmt bgra -rle 0 $framePattern -loglevel error
+    & $ffmpeg.Source -y -i $SourceFile.FullName -an -vsync 0 -vf $videoFilter -pix_fmt bgra -rle 0 $framePattern -loglevel error
     if ($LASTEXITCODE -ne 0) {
         Remove-Item -LiteralPath $DestDir -Recurse -Force
         return $false
@@ -161,7 +165,7 @@ function Convert-AnimatedGif {
         return $false
     }
 
-    # Only a single frame came out -- this wasn't actually an animated GIF.
+    # Only a single frame came out -- this wasn't actually animated.
     # Fall back to treating it as a plain static picture instead of shipping
     # a one-file "animation" folder.
     if ($writtenFrames.Count -eq 1) {
@@ -207,21 +211,21 @@ $sourceFiles = Get-ChildItem -Path $sourceDir -File |
     Sort-Object Name
 
 if ($sourceFiles.Count -eq 0) {
-    Write-Host "No .png/.jpg/.jpeg/.bmp/.gif/.webp files found in $sourceDir -- nothing to convert." -ForegroundColor Yellow
+    Write-Host "No .png/.jpg/.jpeg/.bmp/.gif/.webp/.mp4 files found in $sourceDir -- nothing to convert." -ForegroundColor Yellow
 } else {
     $converted = 0
     $skipped = 0
 
     foreach ($file in $sourceFiles) {
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        $isGif = $file.Extension.ToLowerInvariant() -eq '.gif'
+        $isAnimated = $file.Extension.ToLowerInvariant() -in $animatedExtensions
 
-        # An animated GIF's destination is a folder; everything else is a single
-        # .tga. (A non-animated GIF only reveals that once Convert-AnimatedGif has
+        # An animated GIF/MP4's destination is a folder; everything else is a single
+        # .tga. (A non-animated GIF only reveals that once Convert-Animation has
         # run, so its "already exists" check covers both possible outcomes.)
         $tgaPath = Join-Path $imagesDir ($baseName + '.tga')
         $frameDir = Join-Path $imagesDir $baseName
-        $alreadyExists = if ($isGif) {
+        $alreadyExists = if ($isAnimated) {
             (Test-Path -LiteralPath $tgaPath -PathType Leaf) -or (Test-Path -LiteralPath $frameDir -PathType Container)
         } else {
             Test-Path -LiteralPath $tgaPath -PathType Leaf
@@ -234,14 +238,14 @@ if ($sourceFiles.Count -eq 0) {
         }
 
         $ok = $false
-        if ($isGif) {
+        if ($isAnimated) {
             # Force may be overwriting a previous conversion that took the other
             # branch (folder vs. single .tga) -- clear both before converting.
             if (Test-Path -LiteralPath $tgaPath) { Remove-Item -LiteralPath $tgaPath -Force }
             if (Test-Path -LiteralPath $frameDir) { Remove-Item -LiteralPath $frameDir -Recurse -Force }
 
             Write-Host "  $($file.Name) -> $baseName\ (animated, up to $MaxFrames frames)"
-            $ok = Convert-AnimatedGif -SourceFile $file -DestDir $frameDir
+            $ok = Convert-Animation -SourceFile $file -DestDir $frameDir
             if (-not $ok) {
                 Write-Warning "ffmpeg/ffprobe couldn't extract frames from $($file.Name); leaving it alone."
             }

@@ -57,9 +57,9 @@ local function announce()
     speak(ANNOUNCEMENT)
 end
 
--- Tells the rest of the group to announce it too -- SendAddonMessage never
--- echoes back to the sender, so this is on top of, not instead of, the
--- local announce() the caster already got.
+-- Tells the rest of the group to announce it too. The message also echoes
+-- back to the sender, but the debounce swallows that so the caster's local
+-- announce() doesn't play twice.
 local function broadcastToGroup()
     if not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then
         return

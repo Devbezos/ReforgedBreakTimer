@@ -26,5 +26,6 @@ ns.images = {
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\yipzhat", name = "Yipzhat" },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\cat-standing\\sheet", name = "Cat Standing", delay = 0.1, frames = 60, columns = 8, rows = 8, frameWidth = 100, frameHeight = 178 },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\hump-day-happy-meeting\\sheet", name = "Hump Day Happy Meeting", delay = 0.0835593220338983, frames = 59, columns = 8, rows = 8, frameWidth = 134, frameHeight = 178 },
+    { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\pedro\\sheet", name = "Pedro", delay = 0.110169491525424, frames = 59, columns = 8, rows = 8, frameWidth = 141, frameHeight = 178 },
     { path = "Interface\\AddOns\\ReforgedBreakTimer\\images\\the-voices-meme\\sheet", name = "The Voices Meme", delay = 0.143965517241379, frames = 58, columns = 8, rows = 8, frameWidth = 178, frameHeight = 154 },
 }
