@@ -1,0 +1,5 @@
+frames=55
+columns=8
+rows=7
+width=178
+height=167
