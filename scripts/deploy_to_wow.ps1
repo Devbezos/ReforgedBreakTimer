@@ -190,7 +190,7 @@ foreach ($wowAddonPath in $WowAddonPaths) {
         New-Item -ItemType Directory -Path $wowAddonPath -Force | Out-Null
     }
 
-    Write-Host "Deploying Reforged Break Timer to:"
+    Write-Host "Deploying Dev's Raid Tools to:"
     Write-Host "  $wowAddonPath"
 
     Copy-RepoFile -RelativePath "ReforgedBreakTimer.toc" -DestinationRoot $wowAddonPath

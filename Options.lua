@@ -23,7 +23,7 @@ local CONTROL_BORDER = { 1, 1, 1, 0.14 }
 
 local PADDING = 16
 local CARD_GAP = 12
-local SETTINGS_CARD_HEIGHT = 184
+local SETTINGS_CARD_HEIGHT = 248
 local TILE_MIN_WIDTH = 104
 local TILE_GAP = 8
 local TILE_LABEL_HEIGHT = 22
@@ -206,7 +206,7 @@ end
 --------------------------------------------------------------------------
 
 local panel = CreateFrame("Frame", "ReforgedBreakTimerOptionsPanel", UIParent)
-panel.name = "Dev's Break Timer"
+panel.name = "Dev's Raid Tools"
 
 local logo = panel:CreateTexture(nil, "ARTWORK")
 logo:SetSize(40, 40)
@@ -215,7 +215,7 @@ logo:SetTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\logo")
 
 local title = createText(panel, 18, TEXT)
 title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -2)
-title:SetText("Dev's Break Timer")
+title:SetText("Dev's Raid Tools")
 
 local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = getMetadata and getMetadata(addonName, "Version")
@@ -228,7 +228,7 @@ end
 local subtitle = createText(panel, 11, TEXT_MUTED)
 subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 subtitle:SetPoint("RIGHT", panel, "RIGHT", -PADDING, 0)
-subtitle:SetText("Pops up a picture whenever BigWigs calls a break.")
+subtitle:SetText("Raid-night extras. Every feature below can be switched on or off.")
 
 local HEADER_HEIGHT = 40 + PADDING + CARD_GAP + 4
 
@@ -263,6 +263,17 @@ local hideBigWigsBarToggle = createToggle(popupCard, "Hide BigWigs break bar", f
 end)
 hideBigWigsBarToggle:SetPoint("BOTTOMLEFT", previewButton, "TOPLEFT", 0, 12)
 
+local raidImageSyncToggle = createToggle(popupCard, "Use the raid leader's picture", function(isOn)
+    ns.SetRaidImageSyncEnabled(isOn)
+end)
+raidImageSyncToggle:SetPoint("BOTTOMLEFT", hideBigWigsBarToggle, "TOPLEFT", 0, 12)
+
+-- Master switch: off means breaks show nothing (BigWigs' own bar stays).
+local breakPopupToggle = createToggle(popupCard, "Show break popup", function(isOn)
+    ns.SetBreakPopupEnabled(isOn)
+end)
+breakPopupToggle:SetPoint("BOTTOMLEFT", raidImageSyncToggle, "TOPLEFT", 0, 12)
+
 -- Pops the preview up while dragging (if it isn't already showing), so the
 -- new size is visible as it changes.
 local sizeSlider = createSlider(popupCard, "Size", 0.5, 2, 0.05, function(value)
@@ -273,20 +284,20 @@ end, function(value)
         showPreview()
     end
 end)
-sizeSlider:SetPoint("BOTTOMLEFT", hideBigWigsBarToggle, "TOPLEFT", 0, 16)
+sizeSlider:SetPoint("BOTTOMLEFT", breakPopupToggle, "TOPLEFT", 0, 16)
 sizeSlider:SetPoint("RIGHT", popupCard, "RIGHT", -14, 0)
 
 --------------------------------------------------------------------------
--- Hearty Feast card
+-- Raid alerts card
 --------------------------------------------------------------------------
 
-local feastCard = createCard(panel, "Hearty Feast alert")
+local feastCard = createCard(panel, "Raid alerts")
 feastCard:SetPoint("TOPLEFT", panel, "TOP", CARD_GAP / 2, -HEADER_HEIGHT)
 feastCard:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PADDING, -HEADER_HEIGHT)
 feastCard:SetHeight(SETTINGS_CARD_HEIGHT)
-createCardHint(feastCard, "Yells over text-to-speech the moment anyone drops a Hearty Feast.")
+createCardHint(feastCard, "Extras for raid night. The summon list only shows up for warlocks.")
 
-local feastToggle = createToggle(feastCard, "Announce", function(isOn)
+local feastToggle = createToggle(feastCard, "Hearty Feast TTS", function(isOn)
     ns.SetHeartyFeastTTSEnabled(isOn)
 end)
 feastToggle:SetPoint("BOTTOMLEFT", 14, 16)
@@ -295,6 +306,16 @@ local feastTestButton = createButton(feastCard, "Test", 70, function()
     ns.TestHeartyFeastAnnouncement()
 end)
 feastTestButton:SetPoint("BOTTOMRIGHT", -14, 14)
+
+local lootPassToggle = createToggle(feastCard, "Gruul's Gone Wild loot prompt", function(isOn)
+    ns.SetLootPassPromptEnabled(isOn)
+end)
+lootPassToggle:SetPoint("BOTTOMLEFT", feastToggle, "TOPLEFT", 0, 12)
+
+local summonToggle = createToggle(feastCard, "Warlock summon list", function(isOn)
+    ns.SetSummonHelperEnabled(isOn)
+end)
+summonToggle:SetPoint("BOTTOMLEFT", lootPassToggle, "TOPLEFT", 0, 12)
 
 --------------------------------------------------------------------------
 -- Images card: a scrollable grid of clickable thumbnails
@@ -510,6 +531,10 @@ end)
 local function refreshPanel()
     refreshTiles()
     feastToggle:SetOn(ns.IsHeartyFeastTTSEnabled())
+    lootPassToggle:SetOn(ns.IsLootPassPromptEnabled())
+    summonToggle:SetOn(ns.IsSummonHelperEnabled())
+    breakPopupToggle:SetOn(ns.IsBreakPopupEnabled())
+    raidImageSyncToggle:SetOn(ns.IsRaidImageSyncEnabled())
     hideBigWigsBarToggle:SetOn(ns.IsHideBigWigsBreakBarEnabled())
     sizeSlider:SetValue(ns.GetFrameScale())
     layoutTiles(scrollFrame:GetWidth())

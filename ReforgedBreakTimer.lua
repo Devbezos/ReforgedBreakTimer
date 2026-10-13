@@ -346,6 +346,25 @@ function ns.HideBreak()
     frame:Hide()
 end
 
+function ns.IsBreakPopupEnabled()
+    return ReforgedBreakTimerDB.breakPopup and true or false
+end
+
+function ns.SetBreakPopupEnabled(isEnabled)
+    ReforgedBreakTimerDB.breakPopup = isEnabled
+    if not isEnabled then
+        ns.HideBreak()
+    end
+end
+
+function ns.IsRaidImageSyncEnabled()
+    return ReforgedBreakTimerDB.raidImageSync and true or false
+end
+
+function ns.SetRaidImageSyncEnabled(isEnabled)
+    ReforgedBreakTimerDB.raidImageSync = isEnabled
+end
+
 -- The rotate button: a local-only change that also stops a late-arriving
 -- leader pick from overriding what this player chose.
 function ns.ShowNextImage()
@@ -364,7 +383,7 @@ end
 -- Called when a real BigWigs break starts (never for the options preview).
 -- Only the group leader sends; everyone else just listens.
 local function broadcastBreakImage()
-    if not (IsInGroup() and UnitIsGroupLeader("player")) then
+    if not ns.IsRaidImageSyncEnabled() or not (IsInGroup() and UnitIsGroupLeader("player")) then
         return
     end
     if not (currentImagePath and C_ChatInfo and C_ChatInfo.SendAddonMessage) then
@@ -381,6 +400,9 @@ local function broadcastBreakImage()
 end
 
 local function onLeaderImage(imageKey, sender)
+    if not ns.IsRaidImageSyncEnabled() then
+        return
+    end
     local senderName = Ambiguate(sender, "none")
     -- Our own broadcast echoes back to us; the leader keeps their own pick.
     if senderName == UnitName("player") or not UnitIsGroupLeader(senderName) then
@@ -430,6 +452,16 @@ end)
 -- whole-second precision (time(), not GetTime()), so it's the one place
 -- a ~1s offset from BigWigs' own bar can still show up.
 
+-- A real BigWigs break (never the options preview). Break state is still
+-- tracked with the popup switched off, just nothing is shown or sent.
+local function startBreak(remaining, total)
+    if not ns.IsBreakPopupEnabled() then
+        return
+    end
+    ns.ShowBreak(remaining, total)
+    broadcastBreakImage()
+end
+
 local function checkBreak()
     local tbl = BigWigs3DB and BigWigs3DB.breakTime
     if tbl then
@@ -448,8 +480,7 @@ local function checkBreak()
             if isNewOrChanged then
                 wasBreakActive = true
                 lastPolledBreakStart, lastPolledBreakTotal = startTime, totalSeconds
-                ns.ShowBreak(remaining, totalSeconds)
-                broadcastBreakImage()
+                startBreak(remaining, totalSeconds)
             end
             return
         end
@@ -482,7 +513,7 @@ end
 
 function ns.SetHideBigWigsBreakBar(isEnabled)
     ReforgedBreakTimerDB.hideBigWigsBreakBar = isEnabled
-    if isEnabled and wasBreakActive then
+    if isEnabled and wasBreakActive and ns.IsBreakPopupEnabled() then
         stopBigWigsBreakBar()
     end
 end
@@ -502,8 +533,7 @@ local function hookBigWigsMessages()
     listener:RegisterMessage("BigWigs_StartBreak", function(_, plugin, seconds)
         breakPlugin = plugin or breakPlugin
         wasBreakActive = true
-        ns.ShowBreak(seconds, seconds)
-        broadcastBreakImage()
+        startBreak(seconds, seconds)
 
         -- Keep the poll fallback's view in sync with what we just showed,
         -- so it doesn't mistake this for a change and redundantly re-fire
@@ -533,7 +563,8 @@ local function hookBigWigsMessages()
         end
         breakPlugin = module
         breakBarText = text
-        if ns.IsHideBigWigsBreakBarEnabled() then
+        -- With the popup off, BigWigs' bar is the only timer left, so keep it.
+        if ns.IsBreakPopupEnabled() and ns.IsHideBigWigsBreakBarEnabled() then
             C_Timer.After(0, stopBigWigsBreakBar)
         end
     end)
@@ -649,6 +680,18 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     end
     if ReforgedBreakTimerDB.hideBigWigsBreakBar == nil then
         ReforgedBreakTimerDB.hideBigWigsBreakBar = true
+    end
+    if ReforgedBreakTimerDB.breakPopup == nil then
+        ReforgedBreakTimerDB.breakPopup = true
+    end
+    if ReforgedBreakTimerDB.raidImageSync == nil then
+        ReforgedBreakTimerDB.raidImageSync = true
+    end
+    if ReforgedBreakTimerDB.lootPassPrompt == nil then
+        ReforgedBreakTimerDB.lootPassPrompt = true
+    end
+    if ReforgedBreakTimerDB.summonHelper == nil then
+        ReforgedBreakTimerDB.summonHelper = true
     end
 
     local frame = createFrame()
