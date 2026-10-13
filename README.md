@@ -10,6 +10,8 @@ A WoW addon that pops up a random picture and a countdown the moment your raid's
 
    `World of Warcraft\_retail_\Interface\AddOns\`
 
+   For WoW Forever (beta), it's `World of Warcraft\_classic_beta_\Interface\AddOns\` instead. The same download works for both.
+
 4. Drag the whole `ReforgedBreakTimer` folder into that `AddOns` folder, so you end up with:
 
    `World of Warcraft\_retail_\Interface\AddOns\ReforgedBreakTimer\ReforgedBreakTimer.toc`
@@ -28,7 +30,7 @@ There's nothing to turn on: every feature starts switched on. The moment BigWigs
 - **Close it early**: click the × in the corner.
 - **Same picture for the whole raid**: if the raid (or party) leader also has the addon, everyone's popup opens on the leader's picture. After that, the rotate button only changes your own popup, and the leader cycling pictures doesn't change anyone else's. If you've turned the leader's picture off in your settings, you get your own random one instead.
 - **Gruul's Gone Wild loot prompt**: when you zone into a raid and the raid leader is in the guild Gruul's Gone Wild, a popup asks if you want to pass on loot. Yes turns on the game's "Pass on Loot" option; it gets turned back off when you leave the raid.
-- **Warlock summon list** (warlocks only): in a Heroic or Mythic raid, a small movable list shows everyone in the raiding groups (1–6 on Heroic, 1–4 on Mythic) who's online but not in the instance yet. Click a name to target them for a summon; "summoning" means they already have one pending. Close it with the ×, and it comes back if the list changes. It can't update during combat, so it catches up once combat ends.
+- **Warlock summon list** (warlocks only): in a Heroic or Mythic raid, a small movable list shows everyone in the raiding groups (1–6 on Heroic, 1–4 on Mythic) who's online but not in the instance yet. On WoW Forever, where raids have no Heroic or Mythic, it covers every raid and all groups. (The Hearty Feast speech is retail-only and doesn't appear on Forever.) Click a name to target them for a summon; "summoning" means they already have one pending. Close it with the ×, and it comes back if the list changes. It can't update during combat, so it catches up once combat ends.
 - **Settings**: go to **Game Menu (Esc) → Options → AddOns → Dev's Raid Tools**. From there you can:
   - Turn individual pictures on or off (or Select All / Select None).
   - Reset the popup back to the center of the screen if you've lost it.

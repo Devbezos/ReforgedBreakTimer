@@ -310,7 +310,15 @@ feastTestButton:SetPoint("BOTTOMRIGHT", -14, 14)
 local lootPassToggle = createToggle(feastCard, "Gruul's Gone Wild loot prompt", function(isOn)
     ns.SetLootPassPromptEnabled(isOn)
 end)
-lootPassToggle:SetPoint("BOTTOMLEFT", feastToggle, "TOPLEFT", 0, 12)
+-- Hearty Feast is retail-only; on WoW Forever its row is hidden and the
+-- loot prompt takes its place at the bottom.
+if ns.isHeartyFeastAvailable then
+    lootPassToggle:SetPoint("BOTTOMLEFT", feastToggle, "TOPLEFT", 0, 12)
+else
+    feastToggle:Hide()
+    feastTestButton:Hide()
+    lootPassToggle:SetPoint("BOTTOMLEFT", 14, 16)
+end
 
 local summonToggle = createToggle(feastCard, "Warlock summon list", function(isOn)
     ns.SetSummonHelperEnabled(isOn)

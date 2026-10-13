@@ -11,6 +11,8 @@ param(
     [string[]]$WowAddonPaths = @(
         "D:\Battle.NET\World Of Warcraft\_retail_\Interface\AddOns\ReforgedBreakTimer",
         "D:\Battle.NET\World Of Warcraft\_ptr_\Interface\AddOns\ReforgedBreakTimer"
+        "D:\Battle.NET\World Of Warcraft\_xptr_\Interface\AddOns\ReforgedBreakTimer"
+        "D:\Battle.NET\World Of Warcraft\_classic_beta_\Interface\AddOns\ReforgedBreakTimer"
     ),
     [switch]$NoDevSuffix,
     [switch]$ValidateOnly

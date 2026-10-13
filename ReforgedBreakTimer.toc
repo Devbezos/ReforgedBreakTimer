@@ -1,4 +1,4 @@
-## Interface: 120000
+## Interface: 120000, 16001
 ## Title: Dev's Raid Tools
 ## Notes: Raid-night extras: a picture popup on BigWigs breaks, Hearty Feast alerts, a Gruul's Gone Wild loot prompt and a warlock summon list. Every feature can be switched off in the options.
 ## Author: Reforged Tools

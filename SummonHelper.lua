@@ -17,6 +17,11 @@ local MAX_GROUP_BY_DIFFICULTY = {
     [16] = 4, -- Mythic
 }
 
+-- WoW Forever's raids have no Heroic/Mythic split, so there every raid
+-- counts and the whole raid (all 8 groups) is listed.
+local IS_MAINLINE = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+local ALL_GROUPS = 8
+
 local ACCENT = { 0.20, 0.85, 0.35 }
 local ROW_HEIGHT = 18
 local WIDTH = 180
@@ -38,7 +43,7 @@ local function collectMissing()
         return nil
     end
     local instanceName, instanceType, difficultyID = GetInstanceInfo()
-    local maxGroup = MAX_GROUP_BY_DIFFICULTY[difficultyID]
+    local maxGroup = MAX_GROUP_BY_DIFFICULTY[difficultyID] or (not IS_MAINLINE and ALL_GROUPS)
     if instanceType ~= "raid" or not maxGroup then
         return nil
     end
