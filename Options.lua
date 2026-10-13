@@ -23,7 +23,7 @@ local CONTROL_BORDER = { 1, 1, 1, 0.14 }
 
 local PADDING = 16
 local CARD_GAP = 12
-local SETTINGS_CARD_HEIGHT = 112
+local SETTINGS_CARD_HEIGHT = 184
 local TILE_MIN_WIDTH = 104
 local TILE_GAP = 8
 local TILE_LABEL_HEIGHT = 22
@@ -96,6 +96,64 @@ local function createButton(parent, label, width, onClick)
     return button
 end
 
+-- A flat horizontal slider with its label on the left and the current
+-- value (run through `formatValue`) on the right, above the track.
+-- `onChange` only fires for the user's own drags/wheel, not SetValue.
+local function createSlider(parent, label, minValue, maxValue, step, formatValue, onChange)
+    local slider = CreateFrame("Slider", nil, parent)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(minValue, maxValue)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    slider:EnableMouseWheel(true)
+
+    slider.track = slider:CreateTexture(nil, "BACKGROUND")
+    slider.track:SetTexture(WHITE)
+    setColor(slider.track, "SetVertexColor", CONTROL_BORDER)
+    slider.track:SetHeight(4)
+    slider.track:SetPoint("LEFT")
+    slider.track:SetPoint("RIGHT")
+
+    local thumb = slider:CreateTexture(nil, "OVERLAY")
+    thumb:SetTexture(WHITE)
+    thumb:SetSize(10, 16)
+    slider:SetThumbTexture(thumb)
+
+    -- Accent fill from the left end of the track up to the thumb.
+    slider.fill = slider:CreateTexture(nil, "ARTWORK")
+    slider.fill:SetTexture(WHITE)
+    setColor(slider.fill, "SetVertexColor", ACCENT)
+    slider.fill:SetHeight(4)
+    slider.fill:SetPoint("LEFT", slider.track, "LEFT")
+    slider.fill:SetPoint("RIGHT", thumb, "CENTER")
+
+    slider.label = createText(slider, 12, TEXT)
+    slider.label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 6)
+    slider.label:SetText(label)
+
+    slider.valueText = createText(slider, 11, ACCENT)
+    slider.valueText:SetPoint("BOTTOMRIGHT", slider, "TOPRIGHT", 0, 6)
+    -- A new Slider sits at its minimum; SetValue to that same value later
+    -- wouldn't fire OnValueChanged, so label it up front.
+    slider.valueText:SetText(formatValue(minValue))
+
+    slider:SetScript("OnValueChanged", function(self, value, userInput)
+        self.valueText:SetText(formatValue(value))
+        if userInput then
+            onChange(value)
+        end
+    end)
+    slider:SetScript("OnMouseWheel", function(self, delta)
+        local low, high = self:GetMinMaxValues()
+        local value = math.min(high, math.max(low, self:GetValue() + delta * step))
+        self:SetValue(value)
+        onChange(value)
+    end)
+
+    return slider
+end
+
 -- A sliding on/off switch with a clickable label. Uses SetOn/IsOn rather
 -- than CheckButton's SetChecked since it's a plain Button underneath.
 local function createToggle(parent, label, onChange)
@@ -148,7 +206,7 @@ end
 --------------------------------------------------------------------------
 
 local panel = CreateFrame("Frame", "ReforgedBreakTimerOptionsPanel", UIParent)
-panel.name = "Reforged Break Timer"
+panel.name = "Dev's Break Timer"
 
 local logo = panel:CreateTexture(nil, "ARTWORK")
 logo:SetSize(40, 40)
@@ -157,7 +215,7 @@ logo:SetTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\logo")
 
 local title = createText(panel, 18, TEXT)
 title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -2)
-title:SetText("Reforged Break Timer")
+title:SetText("Dev's Break Timer")
 
 local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = getMetadata and getMetadata(addonName, "Version")
@@ -186,16 +244,37 @@ createCardHint(popupCard, "Drag the popup to move it. Preview shows it for 15 se
 
 -- The Settings window sits above the popup's normal strata, so a preview is
 -- lifted over it (and dropped back down when the panel closes).
-local previewButton = createButton(popupCard, "Preview", 90, function()
+local function showPreview()
     ReforgedBreakTimerFrame:SetFrameStrata("DIALOG")
     ns.ShowBreak(15, 15)
-end)
+end
+
+local previewButton = createButton(popupCard, "Preview", 90, showPreview)
 previewButton:SetPoint("BOTTOMLEFT", 14, 14)
 
 local resetPositionButton = createButton(popupCard, "Reset position", 110, function()
     ns.ResetFramePosition()
 end)
 resetPositionButton:SetPoint("LEFT", previewButton, "RIGHT", 8, 0)
+
+-- Leaves this popup as the only on-screen break timer.
+local hideBigWigsBarToggle = createToggle(popupCard, "Hide BigWigs break bar", function(isOn)
+    ns.SetHideBigWigsBreakBar(isOn)
+end)
+hideBigWigsBarToggle:SetPoint("BOTTOMLEFT", previewButton, "TOPLEFT", 0, 12)
+
+-- Pops the preview up while dragging (if it isn't already showing), so the
+-- new size is visible as it changes.
+local sizeSlider = createSlider(popupCard, "Size", 0.5, 2, 0.05, function(value)
+    return string.format("%d%%", value * 100 + 0.5)
+end, function(value)
+    ns.SetFrameScale(value)
+    if not ReforgedBreakTimerFrame:IsShown() then
+        showPreview()
+    end
+end)
+sizeSlider:SetPoint("BOTTOMLEFT", hideBigWigsBarToggle, "TOPLEFT", 0, 16)
+sizeSlider:SetPoint("RIGHT", popupCard, "RIGHT", -14, 0)
 
 --------------------------------------------------------------------------
 -- Hearty Feast card
@@ -431,6 +510,8 @@ end)
 local function refreshPanel()
     refreshTiles()
     feastToggle:SetOn(ns.IsHeartyFeastTTSEnabled())
+    hideBigWigsBarToggle:SetOn(ns.IsHideBigWigsBreakBarEnabled())
+    sizeSlider:SetValue(ns.GetFrameScale())
     layoutTiles(scrollFrame:GetWidth())
 end
 

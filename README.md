@@ -1,4 +1,4 @@
-# Reforged Break Timer
+# Dev's Break Timer
 
 A WoW addon that pops up a random picture and a countdown the moment your raid's [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) break timer goes off. No setup, no commands to remember — install it once and it just works.
 
@@ -16,9 +16,9 @@ A WoW addon that pops up a random picture and a countdown the moment your raid's
 
 5. If WoW was already running, type `/reload` in chat (or just restart WoW).
 
-That's it — no PowerShell, no extra programs to install. You'll see "Reforged Break Timer" in your AddOns list at the character-select screen.
+That's it — no PowerShell, no extra programs to install. You'll see "Dev's Break Timer" in your AddOns list at the character-select screen.
 
-> **Requires [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) to also be installed and enabled.** Reforged Break Timer watches for BigWigs' breaks and shows the popup — it doesn't start or track breaks by itself.
+> **Requires [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) to also be installed and enabled.** Dev's Break Timer watches for BigWigs' breaks and shows the popup — it doesn't start or track breaks by itself.
 
 ## Using it
 
@@ -26,9 +26,12 @@ There's nothing to turn on. The moment BigWigs calls a break, the popup appears 
 
 - **Move it**: click and drag anywhere on the popup. It remembers where you leave it.
 - **Close it early**: click the × in the corner.
-- **Settings**: go to **Game Menu (Esc) → Options → AddOns → Reforged Break Timer**. From there you can:
+- **Same picture for the whole raid**: if the raid (or party) leader also has the addon, everyone's popup opens on the leader's picture. After that, the rotate button only changes your own popup, and the leader cycling pictures doesn't change anyone else's. If you've turned the leader's picture off in your settings, you get your own random one instead.
+- **Settings**: go to **Game Menu (Esc) → Options → AddOns → Dev's Break Timer**. From there you can:
   - Turn individual pictures on or off (or Select All / Select None).
   - Reset the popup back to the center of the screen if you've lost it.
+  - Hide BigWigs' own "Break time" bar so the popup is the only break timer on screen (on by default).
+  - Make the popup bigger or smaller with the Size slider (50%–200%).
 
 ## Troubleshooting
 
@@ -83,7 +86,7 @@ The sections below are for whoever maintains this repo — everyday users don't 
 
 ### How the popup works internally
 
-Reforged Break Timer has no manual controls or slash commands. Its primary detection path hooks BigWigs' own `BigWigs_StartBreak`/`BigWigs_StopBreak` AceEvent-3.0 messages — the same ones BigWigs' own break bar reacts to, fired the instant a break starts or ends with full `GetTime()` precision — so the popup's countdown starts in step with BigWigs' own bar, not a poll cycle behind it.
+Dev's Break Timer has no manual controls or slash commands. Its primary detection path hooks BigWigs' own `BigWigs_StartBreak`/`BigWigs_StopBreak` AceEvent-3.0 messages — the same ones BigWigs' own break bar reacts to, fired the instant a break starts or ends with full `GetTime()` precision — so the popup's countdown starts in step with BigWigs' own bar, not a poll cycle behind it.
 
 As a safety net (in case AceEvent-3.0 isn't available yet, or our addon registers its listener after BigWigs already fired the message for an in-progress break), it also polls `BigWigs3DB.breakTime` — the same saved-variable table BigWigs itself writes to — 5 times a second. That fallback path can still trail BigWigs' own bar by up to ~1 second, because `BigWigs3DB.breakTime` only stores whole-second precision (`time()`, not `GetTime()`); that's a limit of the fallback's source data, not something pollable away. In the normal case where the message hook connects (BigWigs installed and loaded, which the `## OptionalDeps: BigWigs` in the `.toc` ensures happens before we do), the fallback should rarely if ever be the one that fires.
 

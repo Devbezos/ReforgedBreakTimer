@@ -31,6 +31,20 @@ local imageQueue = {}
 -- nil whenever the current image is a plain static picture.
 local currentAnimation
 
+-- Raid image sync: the group leader's addon tells everyone else which
+-- picture it opened the break with, so the whole raid starts on the same
+-- one. Only that first pick is shared -- anyone (leader included) cycling
+-- to another picture afterwards only changes their own popup.
+local SYNC_PREFIX = "RBTBreakImage"
+local IMAGE_PATH_PREFIX = "Interface\\AddOns\\ReforgedBreakTimer\\images\\"
+-- How long after a break starts the leader's pick is still accepted (both
+-- ways round: it can land just before or just after our own break detection).
+local SYNC_WINDOW = 10
+
+local breakShownAt = 0
+local imageChangedByUser = false
+local pendingLeaderImage, pendingLeaderImageAt = nil, 0
+
 --------------------------------------------------------------------------
 -- Image selection
 --------------------------------------------------------------------------
@@ -128,6 +142,56 @@ local function refillImageQueue(enabled)
     end
 end
 
+local function displayImage(entry)
+    currentImagePath = entry.path
+
+    local image = ReforgedBreakTimerFrame.image
+    image:SetTexture(entry.path)
+
+    if entry.frames then
+        -- Animated (GIF-sourced) image: play its frames in a loop, starting
+        -- from the first one. See advanceAnimation, driven from onBreakUpdate.
+        currentAnimation = {
+            entry = entry,
+            delay = math.max(entry.delay or 0.1, 0.02),
+            frameIndex = 1,
+            elapsed = 0,
+        }
+        image:SetTexCoord(ns.GetFrameTexCoords(entry, 1))
+    else
+        currentAnimation = nil
+        image:SetTexCoord(0, 1, 0, 1)
+    end
+end
+
+local function findImage(path)
+    for _, entry in ipairs(ns.images) do
+        if entry.path == path then
+            return entry
+        end
+    end
+end
+
+-- Swaps the picture we picked ourselves for the raid leader's. Ours goes
+-- back into the queue (at the far end, since picks pop off the back) so it
+-- still comes up later in this cycle, and the leader's is taken out so it
+-- doesn't repeat soon.
+local function applyLeaderImage(entry)
+    if entry.path == currentImagePath then
+        return
+    end
+    for i = #imageQueue, 1, -1 do
+        if imageQueue[i] == entry then
+            table.remove(imageQueue, i)
+        end
+    end
+    local ownPick = findImage(currentImagePath)
+    if ownPick then
+        table.insert(imageQueue, 1, ownPick)
+    end
+    displayImage(entry)
+end
+
 function ns.ChooseRandomImage()
     local enabled = ns.GetEnabledImages()
 
@@ -151,26 +215,7 @@ function ns.ChooseRandomImage()
         refillImageQueue(enabled)
     end
 
-    local choice = table.remove(imageQueue)
-    currentImagePath = choice.path
-
-    local image = ReforgedBreakTimerFrame.image
-    image:SetTexture(choice.path)
-
-    if choice.frames then
-        -- Animated (GIF-sourced) image: play its frames in a loop, starting
-        -- from the first one. See advanceAnimation, driven from onBreakUpdate.
-        currentAnimation = {
-            entry = choice,
-            delay = math.max(choice.delay or 0.1, 0.02),
-            frameIndex = 1,
-            elapsed = 0,
-        }
-        image:SetTexCoord(ns.GetFrameTexCoords(choice, 1))
-    else
-        currentAnimation = nil
-        image:SetTexCoord(0, 1, 0, 1)
-    end
+    displayImage(table.remove(imageQueue))
 end
 
 -- Steps any currently-playing GIF animation forward by `elapsed` seconds,
@@ -209,6 +254,27 @@ function ns.ResetFramePosition()
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 100)
     ReforgedBreakTimerDB.framePos = nil
+end
+
+function ns.GetFrameScale()
+    return ReforgedBreakTimerDB.frameScale or 1
+end
+
+-- Rescales the popup around its current center, rather than letting it
+-- drift (position offsets are in the frame's own, scaled, units).
+function ns.SetFrameScale(scale)
+    local frame = ReforgedBreakTimerFrame
+    local oldScale = frame:GetScale()
+    local centerX, centerY = frame:GetCenter()
+
+    frame:SetScale(scale)
+    ReforgedBreakTimerDB.frameScale = scale
+
+    if centerX then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", centerX * oldScale / scale, centerY * oldScale / scale)
+        saveFramePosition(frame)
+    end
 end
 
 --------------------------------------------------------------------------
@@ -250,17 +316,25 @@ local function onBreakUpdate(self, elapsed)
     updateDisplay(remaining, self.totalDuration)
 end
 
--- Shows the break frame with a random image and starts its countdown.
--- The image stays static for the whole break; a new one is only picked
--- the next time a break starts.
+-- Shows the break frame with a random image (or the raid leader's, if their
+-- pick already arrived) and starts its countdown. The image stays static
+-- for the whole break unless someone hits the rotate button.
 -- `remaining`/`total` are seconds, as reported by BigWigs.
 function ns.ShowBreak(remaining, total)
     local frame = ReforgedBreakTimerFrame
-    endTime = GetTime() + remaining
+    local now = GetTime()
+    endTime = now + remaining
     frame.totalDuration = total
     frame.tick = 0
+    breakShownAt = now
+    imageChangedByUser = false
 
     ns.ChooseRandomImage()
+    if pendingLeaderImage and now - pendingLeaderImageAt < SYNC_WINDOW then
+        applyLeaderImage(pendingLeaderImage)
+    end
+    pendingLeaderImage = nil
+
     updateDisplay(remaining, total)
     frame:Show()
     frame:Raise()
@@ -271,6 +345,74 @@ function ns.HideBreak()
     local frame = ReforgedBreakTimerFrame
     frame:Hide()
 end
+
+-- The rotate button: a local-only change that also stops a late-arriving
+-- leader pick from overriding what this player chose.
+function ns.ShowNextImage()
+    imageChangedByUser = true
+    ns.ChooseRandomImage()
+end
+
+--------------------------------------------------------------------------
+-- Raid image sync
+--------------------------------------------------------------------------
+
+if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+    C_ChatInfo.RegisterAddonMessagePrefix(SYNC_PREFIX)
+end
+
+-- Called when a real BigWigs break starts (never for the options preview).
+-- Only the group leader sends; everyone else just listens.
+local function broadcastBreakImage()
+    if not (IsInGroup() and UnitIsGroupLeader("player")) then
+        return
+    end
+    if not (currentImagePath and C_ChatInfo and C_ChatInfo.SendAddonMessage) then
+        return
+    end
+    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
+        return
+    end
+    if currentImagePath:sub(1, #IMAGE_PATH_PREFIX) ~= IMAGE_PATH_PREFIX then
+        return
+    end
+    local channel = IsInRaid() and "RAID" or "PARTY"
+    C_ChatInfo.SendAddonMessage(SYNC_PREFIX, currentImagePath:sub(#IMAGE_PATH_PREFIX + 1), channel)
+end
+
+local function onLeaderImage(imageKey, sender)
+    local senderName = Ambiguate(sender, "none")
+    -- Our own broadcast echoes back to us; the leader keeps their own pick.
+    if senderName == UnitName("player") or not UnitIsGroupLeader(senderName) then
+        return
+    end
+
+    -- Unknown (e.g. leader's on a newer version with extra images) or
+    -- disabled by this player: keep our own random pick instead.
+    local entry = findImage(IMAGE_PATH_PREFIX .. imageKey)
+    if not entry or not ns.IsImageEnabled(entry.path) then
+        return
+    end
+
+    local now = GetTime()
+    if ReforgedBreakTimerFrame:IsShown() and now - breakShownAt < SYNC_WINDOW then
+        if not imageChangedByUser then
+            applyLeaderImage(entry)
+        end
+    else
+        -- Got here before our own BigWigs detected the break; ShowBreak
+        -- picks it up.
+        pendingLeaderImage, pendingLeaderImageAt = entry, now
+    end
+end
+
+local commFrame = CreateFrame("Frame")
+commFrame:RegisterEvent("CHAT_MSG_ADDON")
+commFrame:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
+    if prefix == SYNC_PREFIX and ReforgedBreakTimerFrame then
+        onLeaderImage(message, sender)
+    end
+end)
 
 --------------------------------------------------------------------------
 -- BigWigs break detection
@@ -307,6 +449,7 @@ local function checkBreak()
                 wasBreakActive = true
                 lastPolledBreakStart, lastPolledBreakTotal = startTime, totalSeconds
                 ns.ShowBreak(remaining, totalSeconds)
+                broadcastBreakImage()
             end
             return
         end
@@ -316,6 +459,31 @@ local function checkBreak()
         wasBreakActive = false
         lastPolledBreakStart, lastPolledBreakTotal = nil, nil
         ns.HideBreak()
+    end
+end
+
+-- BigWigs' Break plugin and the text of the bar it last started, so the
+-- hide-bar option can stop that exact bar (also when switched on mid-break).
+local bigWigsListener, breakPlugin, breakBarText
+
+local function isBreakPlugin(module)
+    return type(module) == "table" and (module == breakPlugin or module.moduleName == "Break")
+end
+
+local function stopBigWigsBreakBar()
+    if bigWigsListener and breakPlugin and breakBarText then
+        bigWigsListener:SendMessage("BigWigs_StopBar", breakPlugin, breakBarText)
+    end
+end
+
+function ns.IsHideBigWigsBreakBarEnabled()
+    return ReforgedBreakTimerDB.hideBigWigsBreakBar and true or false
+end
+
+function ns.SetHideBigWigsBreakBar(isEnabled)
+    ReforgedBreakTimerDB.hideBigWigsBreakBar = isEnabled
+    if isEnabled and wasBreakActive then
+        stopBigWigsBreakBar()
     end
 end
 
@@ -331,9 +499,11 @@ local function hookBigWigsMessages()
     local listener = {}
     AceEvent:Embed(listener)
 
-    listener:RegisterMessage("BigWigs_StartBreak", function(_, _, seconds)
+    listener:RegisterMessage("BigWigs_StartBreak", function(_, plugin, seconds)
+        breakPlugin = plugin or breakPlugin
         wasBreakActive = true
         ns.ShowBreak(seconds, seconds)
+        broadcastBreakImage()
 
         -- Keep the poll fallback's view in sync with what we just showed,
         -- so it doesn't mistake this for a change and redundantly re-fire
@@ -351,6 +521,24 @@ local function hookBigWigsMessages()
         ns.HideBreak()
     end)
 
+    -- BigWigs' Break plugin draws its own "Break time" bar by sending
+    -- BigWigs_StartBar from itself. With the hide option on, we let that
+    -- bar get created and then have BigWigs' Bars plugin stop it again --
+    -- deferred a frame, since our handler can run before Bars' own one has
+    -- made the bar. Matching on the sending plugin (not the bar text) keeps
+    -- this independent of BigWigs' locale.
+    listener:RegisterMessage("BigWigs_StartBar", function(_, module, _, text)
+        if not isBreakPlugin(module) then
+            return
+        end
+        breakPlugin = module
+        breakBarText = text
+        if ns.IsHideBigWigsBreakBarEnabled() then
+            C_Timer.After(0, stopBigWigsBreakBar)
+        end
+    end)
+
+    bigWigsListener = listener
     return true
 end
 
@@ -394,7 +582,7 @@ local function createFrame()
     frame.nextImageButton:SetPushedTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\next_image")
     frame.nextImageButton:GetPushedTexture():SetVertexColor(ACCENT_COLOR[1], ACCENT_COLOR[2], ACCENT_COLOR[3], 1)
     frame.nextImageButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    frame.nextImageButton:SetScript("OnClick", function() ns.ChooseRandomImage() end)
+    frame.nextImageButton:SetScript("OnClick", function() ns.ShowNextImage() end)
     frame.nextImageButton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Show a different image")
@@ -459,8 +647,12 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     if ReforgedBreakTimerDB.heartyFeastTTS == nil then
         ReforgedBreakTimerDB.heartyFeastTTS = true
     end
+    if ReforgedBreakTimerDB.hideBigWigsBreakBar == nil then
+        ReforgedBreakTimerDB.hideBigWigsBreakBar = true
+    end
 
     local frame = createFrame()
+    frame:SetScale(ns.GetFrameScale())
 
     if ReforgedBreakTimerDB.framePos then
         local pos = ReforgedBreakTimerDB.framePos
