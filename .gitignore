@@ -19,3 +19,7 @@ Thumbs.db
 /textures-src/*.bmp
 /textures-src/*.gif
 /textures-src/*.webp
+
+# Local dev tooling (hardcoded paths to this machine's WoW installs) --
+# kept on disk, never committed.
+/scripts/
