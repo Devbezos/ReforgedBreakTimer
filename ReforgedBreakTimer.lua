@@ -681,7 +681,7 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     ReforgedBreakTimerDB = ReforgedBreakTimerDB or {}
     ReforgedBreakTimerDB.disabledImages = ReforgedBreakTimerDB.disabledImages or {}
     if ReforgedBreakTimerDB.heartyFeastTTS == nil then
-        ReforgedBreakTimerDB.heartyFeastTTS = true
+        ReforgedBreakTimerDB.heartyFeastTTS = false
     end
     if ReforgedBreakTimerDB.hideBigWigsBreakBar == nil then
         ReforgedBreakTimerDB.hideBigWigsBreakBar = true
@@ -691,10 +691,10 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     end
     ReforgedBreakTimerDB.raidImageSync = nil -- leftover from the removed raid picture sync
     if ReforgedBreakTimerDB.lootPassPrompt == nil then
-        ReforgedBreakTimerDB.lootPassPrompt = true
+        ReforgedBreakTimerDB.lootPassPrompt = false
     end
     if ReforgedBreakTimerDB.summonHelper == nil then
-        ReforgedBreakTimerDB.summonHelper = true
+        ReforgedBreakTimerDB.summonHelper = false
     end
 
     local frame = createFrame()

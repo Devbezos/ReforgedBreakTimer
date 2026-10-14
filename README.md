@@ -28,12 +28,12 @@ There's nothing to turn on: every feature starts switched on. The moment BigWigs
 
 - **Move it**: click and drag anywhere on the popup. It remembers where you leave it.
 - **Close it early**: click the × in the corner. It stays closed for the rest of that break, and BigWigs' own break bar comes back so you still have a timer.
-- **Gruul's Gone Wild loot prompt**: when you zone into a raid and the raid leader is in the guild Gruul's Gone Wild, a popup asks if you want to pass on loot. Yes turns on the game's "Pass on Loot" option; it gets turned back off when you leave the raid.
+- **Gruul's Gone Wild auto-pass**: in a raid whose leader is in the guild Gruul's Gone Wild, while [RCLootCouncil](https://www.curseforge.com/wow/addons/rclootcouncil) is switched on and running loot for the raid, the game's "Pass on Loot" option is turned on for you automatically. It goes back off as soon as that stops (RC stops handling loot, a different leader, or you leave the raid). If you turned Pass on Loot on yourself, it's left alone.
 - **Warlock summon list** (warlocks only): in a Heroic or Mythic raid, a small movable list shows everyone in the raiding groups (1–6 on Heroic, 1–4 on Mythic) who's online but not in the instance yet. On WoW Forever, where raids have no Heroic or Mythic, it covers every raid and all groups. (The Hearty Feast speech is retail-only and doesn't appear on Forever.) Click a name to target them for a summon; "summoning" means they already have one pending. Close it with the ×, and it comes back if the list changes. It can't update during combat, so it catches up once combat ends.
 - **Settings**: type `/drt`, or go to **Game Menu (Esc) → Options → AddOns → Dev's Raid Tools**. (`/drt preview` shows the popup for 15 seconds.) From there you can:
   - Turn individual pictures on or off (or Select All / Select None).
   - Reset the popup back to the center of the screen if you've lost it.
-  - Switch any feature on or off: the break popup, hiding BigWigs' bar, the Hearty Feast speech, the Gruul's Gone Wild loot prompt and the warlock summon list. Everything starts switched on.
+  - Switch any feature on or off: the break popup, hiding BigWigs' bar, the Hearty Feast speech, the Gruul's Gone Wild auto-pass and the warlock summon list. The break popup and hiding BigWigs' bar start switched on; the Hearty Feast speech, the auto-pass and the summon list start switched off.
   - Hide BigWigs' own "Break time" bar so the popup is the only break timer on screen. This only applies while the break popup is on.
   - Make the popup bigger or smaller with the Size slider (50%–200%).
 

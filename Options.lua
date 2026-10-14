@@ -360,7 +360,7 @@ local summonToggle = createToggle(alertsCard, "Warlock summon list", function(is
 end)
 summonToggle:SetPoint("TOPLEFT", alertsHint, "BOTTOMLEFT", 0, -18)
 
-local lootPassToggle = createToggle(alertsCard, "Gruul's Gone Wild loot prompt", function(isOn)
+local lootPassToggle = createToggle(alertsCard, "Pass on loot for Gruul's Gone Wild RCLootCouncil", function(isOn)
     ns.SetLootPassPromptEnabled(isOn)
 end)
 lootPassToggle:SetPoint("TOPLEFT", summonToggle, "BOTTOMLEFT", 0, -ROW_GAP)
