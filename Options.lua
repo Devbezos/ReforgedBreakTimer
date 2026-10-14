@@ -334,16 +334,11 @@ local breakPopupToggle = createToggle(popupCard, "Show break popup", function(is
 end)
 breakPopupToggle:SetPoint("TOPLEFT", sizeSlider, "BOTTOMLEFT", 0, -22)
 
-local raidImageSyncToggle = createToggle(popupCard, "Use the raid leader's picture", function(isOn)
-    ns.SetRaidImageSyncEnabled(isOn)
-end)
-raidImageSyncToggle:SetPoint("TOPLEFT", breakPopupToggle, "BOTTOMLEFT", 0, -ROW_GAP)
-
 -- Leaves this popup as the only on-screen break timer.
 local hideBigWigsBarToggle = createToggle(popupCard, "Hide BigWigs break bar", function(isOn)
     ns.SetHideBigWigsBreakBar(isOn)
 end)
-hideBigWigsBarToggle:SetPoint("TOPLEFT", raidImageSyncToggle, "BOTTOMLEFT", 0, -ROW_GAP)
+hideBigWigsBarToggle:SetPoint("TOPLEFT", breakPopupToggle, "BOTTOMLEFT", 0, -ROW_GAP)
 
 local previewButton = createButton(popupCard, "Preview", 90, showPreview)
 previewButton:SetPoint("TOPLEFT", hideBigWigsBarToggle, "BOTTOMLEFT", 0, -22)
@@ -612,7 +607,6 @@ local function refreshPanel()
     lootPassToggle:SetOn(ns.IsLootPassPromptEnabled())
     summonToggle:SetOn(ns.IsSummonHelperEnabled())
     breakPopupToggle:SetOn(ns.IsBreakPopupEnabled())
-    raidImageSyncToggle:SetOn(ns.IsRaidImageSyncEnabled())
     hideBigWigsBarToggle:SetOn(ns.IsHideBigWigsBreakBarEnabled())
     sizeSlider:SetValue(ns.GetFrameScale())
     layoutTiles(scrollFrame:GetWidth())

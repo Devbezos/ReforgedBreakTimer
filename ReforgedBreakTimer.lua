@@ -31,20 +31,6 @@ local imageQueue = {}
 -- nil whenever the current image is a plain static picture.
 local currentAnimation
 
--- Raid image sync: the group leader's addon tells everyone else which
--- picture it opened the break with, so the whole raid starts on the same
--- one. Only that first pick is shared -- anyone (leader included) cycling
--- to another picture afterwards only changes their own popup.
-local SYNC_PREFIX = "RBTBreakImage"
-local IMAGE_PATH_PREFIX = "Interface\\AddOns\\ReforgedBreakTimer\\images\\"
--- How long after a break starts the leader's pick is still accepted (both
--- ways round: it can land just before or just after our own break detection).
-local SYNC_WINDOW = 10
-
-local breakShownAt = 0
-local imageChangedByUser = false
-local pendingLeaderImage, pendingLeaderImageAt = nil, 0
-
 --------------------------------------------------------------------------
 -- Image selection
 --------------------------------------------------------------------------
@@ -195,33 +181,6 @@ local function displayImage(entry)
     end
 end
 
-local function findImage(path)
-    for _, entry in ipairs(ns.images) do
-        if entry.path == path then
-            return entry
-        end
-    end
-end
-
--- Swaps the picture we picked ourselves for the raid leader's. Ours goes
--- back into the queue (at the far end, since picks pop off the back) so it
--- still comes up later in this cycle, and the leader's is taken out so it
--- doesn't repeat soon.
-local function applyLeaderImage(entry)
-    if entry.path == currentImagePath then
-        return
-    end
-    for i = #imageQueue, 1, -1 do
-        if imageQueue[i] == entry then
-            table.remove(imageQueue, i)
-        end
-    end
-    local ownPick = findImage(currentImagePath)
-    if ownPick then
-        table.insert(imageQueue, 1, ownPick)
-    end
-    displayImage(entry)
-end
 
 function ns.ChooseRandomImage()
     local enabled = ns.GetEnabledImages()
@@ -347,25 +306,16 @@ local function onBreakUpdate(self, elapsed)
     updateDisplay(remaining, self.totalDuration)
 end
 
--- Shows the break frame with a random image (or the raid leader's, if their
--- pick already arrived) and starts its countdown. The image stays static
--- for the whole break unless someone hits the next-image button.
--- `remaining`/`total` are seconds, as reported by BigWigs.
+-- Shows the break frame with a random image and starts its countdown. The
+-- image stays static for the whole break unless someone hits the
+-- next-image button. `remaining`/`total` are seconds, as reported by BigWigs.
 function ns.ShowBreak(remaining, total)
     local frame = ReforgedBreakTimerFrame
-    local now = GetTime()
-    endTime = now + remaining
+    endTime = GetTime() + remaining
     frame.totalDuration = total
     frame.tick = 0
-    breakShownAt = now
-    imageChangedByUser = false
 
     ns.ChooseRandomImage()
-    if pendingLeaderImage and now - pendingLeaderImageAt < SYNC_WINDOW then
-        applyLeaderImage(pendingLeaderImage)
-    end
-    pendingLeaderImage = nil
-
     updateDisplay(remaining, total)
     frame:Show()
     frame:Raise()
@@ -381,84 +331,10 @@ function ns.IsBreakPopupEnabled()
     return ReforgedBreakTimerDB.breakPopup and true or false
 end
 
-function ns.IsRaidImageSyncEnabled()
-    return ReforgedBreakTimerDB.raidImageSync and true or false
-end
-
-function ns.SetRaidImageSyncEnabled(isEnabled)
-    ReforgedBreakTimerDB.raidImageSync = isEnabled
-end
-
--- The next-image button: a local-only change that also stops a late-arriving
--- leader pick from overriding what this player chose.
+-- The next-image button.
 function ns.ShowNextImage()
-    imageChangedByUser = true
     ns.ChooseRandomImage()
 end
-
---------------------------------------------------------------------------
--- Raid image sync
---------------------------------------------------------------------------
-
-if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-    C_ChatInfo.RegisterAddonMessagePrefix(SYNC_PREFIX)
-end
-
--- Called when a real BigWigs break starts (never for the options preview).
--- Only the group leader sends; everyone else just listens.
-local function broadcastBreakImage()
-    if not ns.IsRaidImageSyncEnabled() or not (IsInGroup() and UnitIsGroupLeader("player")) then
-        return
-    end
-    if not (currentImagePath and C_ChatInfo and C_ChatInfo.SendAddonMessage) then
-        return
-    end
-    if C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
-        return
-    end
-    if currentImagePath:sub(1, #IMAGE_PATH_PREFIX) ~= IMAGE_PATH_PREFIX then
-        return
-    end
-    local channel = IsInRaid() and "RAID" or "PARTY"
-    C_ChatInfo.SendAddonMessage(SYNC_PREFIX, currentImagePath:sub(#IMAGE_PATH_PREFIX + 1), channel)
-end
-
-local function onLeaderImage(imageKey, sender)
-    if not ns.IsRaidImageSyncEnabled() then
-        return
-    end
-    local senderName = Ambiguate(sender, "none")
-    -- Our own broadcast echoes back to us; the leader keeps their own pick.
-    if senderName == UnitName("player") or not UnitIsGroupLeader(senderName) then
-        return
-    end
-
-    -- Unknown (e.g. leader's on a newer version with extra images) or
-    -- disabled by this player: keep our own random pick instead.
-    local entry = findImage(IMAGE_PATH_PREFIX .. imageKey)
-    if not entry or not ns.IsImageEnabled(entry.path) then
-        return
-    end
-
-    local now = GetTime()
-    if ReforgedBreakTimerFrame:IsShown() and now - breakShownAt < SYNC_WINDOW then
-        if not imageChangedByUser then
-            applyLeaderImage(entry)
-        end
-    else
-        -- Got here before our own BigWigs detected the break; ShowBreak
-        -- picks it up.
-        pendingLeaderImage, pendingLeaderImageAt = entry, now
-    end
-end
-
-local commFrame = CreateFrame("Frame")
-commFrame:RegisterEvent("CHAT_MSG_ADDON")
-commFrame:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
-    if prefix == SYNC_PREFIX and ReforgedBreakTimerFrame then
-        onLeaderImage(message, sender)
-    end
-end)
 
 --------------------------------------------------------------------------
 -- BigWigs break detection
@@ -575,7 +451,7 @@ function ns.SetHideBigWigsBreakBar(isEnabled)
 end
 
 -- A real BigWigs break (never the options preview). Break state is still
--- tracked with the popup switched off, just nothing is shown or sent.
+-- tracked with the popup switched off, just nothing is shown.
 local function beginBreak(remaining, total)
     wasBreakActive = true
     popupDismissed = false
@@ -584,7 +460,6 @@ local function beginBreak(remaining, total)
         return
     end
     ns.ShowBreak(remaining, total)
-    broadcastBreakImage()
 end
 
 local function endBreak()
@@ -814,9 +689,7 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     if ReforgedBreakTimerDB.breakPopup == nil then
         ReforgedBreakTimerDB.breakPopup = true
     end
-    if ReforgedBreakTimerDB.raidImageSync == nil then
-        ReforgedBreakTimerDB.raidImageSync = true
-    end
+    ReforgedBreakTimerDB.raidImageSync = nil -- leftover from the removed raid picture sync
     if ReforgedBreakTimerDB.lootPassPrompt == nil then
         ReforgedBreakTimerDB.lootPassPrompt = true
     end
