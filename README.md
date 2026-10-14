@@ -1,4 +1,4 @@
-# Reforged Break Timer
+# Dev's Raid Tools
 
 A WoW addon that pops up a random picture and a countdown the moment your raid's [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) break timer goes off. No setup, no commands to remember — install it once and it just works.
 
@@ -10,25 +10,33 @@ A WoW addon that pops up a random picture and a countdown the moment your raid's
 
    `World of Warcraft\_retail_\Interface\AddOns\`
 
+   For WoW Forever (beta), it's `World of Warcraft\_classic_beta_\Interface\AddOns\` instead. The same download works for both.
+
 4. Drag the whole `ReforgedBreakTimer` folder into that `AddOns` folder, so you end up with:
 
    `World of Warcraft\_retail_\Interface\AddOns\ReforgedBreakTimer\ReforgedBreakTimer.toc`
 
 5. If WoW was already running, type `/reload` in chat (or just restart WoW).
 
-That's it — no PowerShell, no extra programs to install. You'll see "Reforged Break Timer" in your AddOns list at the character-select screen.
+That's it — no PowerShell, no extra programs to install. You'll see "Dev's Raid Tools" in your AddOns list at the character-select screen.
 
-> **Requires [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) to also be installed and enabled.** Reforged Break Timer watches for BigWigs' breaks and shows the popup — it doesn't start or track breaks by itself.
+> **Requires [BigWigs](https://www.curseforge.com/wow/addons/big-wigs) to also be installed and enabled.** Dev's Raid Tools watches for BigWigs' breaks and shows the popup — it doesn't start or track breaks by itself.
 
 ## Using it
 
-There's nothing to turn on. The moment BigWigs calls a break, the popup appears on its own with a random picture and a live countdown, then disappears again when the break ends.
+There's nothing to turn on: every feature starts switched on. The moment BigWigs calls a break, the popup appears on its own with a random picture and a live countdown, then disappears again when the break ends.
 
 - **Move it**: click and drag anywhere on the popup. It remembers where you leave it.
-- **Close it early**: click the × in the corner.
-- **Settings**: go to **Game Menu (Esc) → Options → AddOns → Reforged Break Timer**. From there you can:
+- **Close it early**: click the × in the corner. It stays closed for the rest of that break, and BigWigs' own break bar comes back so you still have a timer.
+- **Same picture for the whole raid**: if the raid (or party) leader also has the addon, everyone's popup opens on the leader's picture. After that, the next-image button only changes your own popup, and the leader cycling pictures doesn't change anyone else's. If you've turned the leader's picture off in your settings, you get your own random one instead.
+- **Gruul's Gone Wild loot prompt**: when you zone into a raid and the raid leader is in the guild Gruul's Gone Wild, a popup asks if you want to pass on loot. Yes turns on the game's "Pass on Loot" option; it gets turned back off when you leave the raid.
+- **Warlock summon list** (warlocks only): in a Heroic or Mythic raid, a small movable list shows everyone in the raiding groups (1–6 on Heroic, 1–4 on Mythic) who's online but not in the instance yet. On WoW Forever, where raids have no Heroic or Mythic, it covers every raid and all groups. (The Hearty Feast speech is retail-only and doesn't appear on Forever.) Click a name to target them for a summon; "summoning" means they already have one pending. Close it with the ×, and it comes back if the list changes. It can't update during combat, so it catches up once combat ends.
+- **Settings**: type `/drt`, or go to **Game Menu (Esc) → Options → AddOns → Dev's Raid Tools**. (`/drt preview` shows the popup for 15 seconds.) From there you can:
   - Turn individual pictures on or off (or Select All / Select None).
   - Reset the popup back to the center of the screen if you've lost it.
+  - Switch any feature on or off: the break popup, using the raid leader's picture, hiding BigWigs' bar, the Hearty Feast speech, the Gruul's Gone Wild loot prompt and the warlock summon list. Everything starts switched on.
+  - Hide BigWigs' own "Break time" bar so the popup is the only break timer on screen. This only applies while the break popup is on.
+  - Make the popup bigger or smaller with the Size slider (50%–200%).
 
 ## Troubleshooting
 
@@ -83,11 +91,11 @@ The sections below are for whoever maintains this repo — everyday users don't 
 
 ### How the popup works internally
 
-Reforged Break Timer has no manual controls or slash commands. Its primary detection path hooks BigWigs' own `BigWigs_StartBreak`/`BigWigs_StopBreak` AceEvent-3.0 messages — the same ones BigWigs' own break bar reacts to, fired the instant a break starts or ends with full `GetTime()` precision — so the popup's countdown starts in step with BigWigs' own bar, not a poll cycle behind it.
+Its detection path listens for BigWigs' own `BigWigs_StartBreak`/`BigWigs_StopBreak` messages on BigWigs' message bus (`BigWigsLoader.RegisterMessage`; older BigWigs builds that still use AceEvent-3.0 are handled too) — the same ones BigWigs' own break bar reacts to, fired the instant a break starts or ends with full `GetTime()` precision — so the popup's countdown starts in step with BigWigs' own bar.
 
-As a safety net (in case AceEvent-3.0 isn't available yet, or our addon registers its listener after BigWigs already fired the message for an in-progress break), it also polls `BigWigs3DB.breakTime` — the same saved-variable table BigWigs itself writes to — 5 times a second. That fallback path can still trail BigWigs' own bar by up to ~1 second, because `BigWigs3DB.breakTime` only stores whole-second precision (`time()`, not `GetTime()`); that's a limit of the fallback's source data, not something pollable away. In the normal case where the message hook connects (BigWigs installed and loaded, which the `## OptionalDeps: BigWigs` in the `.toc` ensures happens before we do), the fallback should rarely if ever be the one that fires.
+On load it also reads `BigWigs3DB.breakTime` — the saved-variable table BigWigs itself writes to — once, to pick up a break that was already running before a `/reload`. Only if the message hook can't connect at all does it fall back to polling that table 5 times a second, which can trail BigWigs' own bar by up to ~1 second, since it only stores whole-second precision (`time()`, not `GetTime()`).
 
-While a break is active, the picture cycles through every enabled image roughly once: the switch interval is the break's total length divided by the number of enabled pictures (minimum 2 seconds, so a huge picture list on a short break doesn't flicker). With only one picture enabled, it just stays put.
+Each break opens on one picture from a shuffled queue, so every enabled picture comes up once before any repeats. It stays put for the whole break unless you press the next-image button.
 
 ### Deploying a local build for testing
 
@@ -134,5 +142,5 @@ Because every push to `main` bumps and releases, keep `main` protected/reviewed 
 | `.luacheckrc` | Lint config (ignores WoW's runtime-provided globals). |
 | `images/` | WoW-ready `.tga`/`.blp` files, plus a sprite-sheet subfolder per animated GIF — this folder is what actually ships. |
 | `images-src/` | Drop original PNG/JPG/etc. files here before converting — never deployed. |
-| `textures/` | WoW-ready `.tga`/`.blp` UI chrome (currently just the logo) — ships alongside `images/`. |
-| `textures-src/` | The logo's original source file — never deployed. |
+| `textures/` | WoW-ready `.tga`/`.blp` UI chrome (e.g. the next-image button icon) — ships alongside `images/`. |
+| `textures-src/` | Original source files for `textures/` — never deployed. |

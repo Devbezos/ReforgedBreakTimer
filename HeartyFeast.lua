@@ -86,6 +86,13 @@ function ns.TestHeartyFeastAnnouncement()
     speak(ANNOUNCEMENT)
 end
 
+-- The spell IDs above are retail's feasts, so on WoW Forever the feature
+-- is switched off entirely (and its options are hidden).
+ns.isHeartyFeastAvailable = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+if not ns.isHeartyFeastAvailable then
+    return
+end
+
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")

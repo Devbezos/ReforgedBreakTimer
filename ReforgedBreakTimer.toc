@@ -1,6 +1,6 @@
-## Interface: 120000
-## Title: Reforged Break Timer
-## Notes: Pops up a random image whenever BigWigs calls a break, with an options panel to pick which images can show.
+## Interface: 120000, 16001
+## Title: Dev's Raid Tools
+## Notes: Raid-night extras: a picture popup on BigWigs breaks, Hearty Feast alerts, a Gruul's Gone Wild loot prompt and a warlock summon list. Every feature can be switched off in the options.
 ## Author: Reforged Tools
 ## Version: 1.6.12
 ## SavedVariables: ReforgedBreakTimerDB
@@ -9,4 +9,6 @@
 Images.lua
 ReforgedBreakTimer.lua
 HeartyFeast.lua
+LootPass.lua
+SummonHelper.lua
 Options.lua

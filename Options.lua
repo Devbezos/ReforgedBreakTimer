@@ -23,7 +23,10 @@ local CONTROL_BORDER = { 1, 1, 1, 0.14 }
 
 local PADDING = 16
 local CARD_GAP = 12
-local SETTINGS_CARD_HEIGHT = 112
+local TAB_HEIGHT = 28
+local TABS_TOP = PADDING + 50 -- just below the title/subtitle header
+local CONTENT_TOP = TABS_TOP + TAB_HEIGHT + CARD_GAP
+local ROW_GAP = 14
 local TILE_MIN_WIDTH = 104
 local TILE_GAP = 8
 local TILE_LABEL_HEIGHT = 22
@@ -96,6 +99,64 @@ local function createButton(parent, label, width, onClick)
     return button
 end
 
+-- A flat horizontal slider with its label on the left and the current
+-- value (run through `formatValue`) on the right, above the track.
+-- `onChange` only fires for the user's own drags/wheel, not SetValue.
+local function createSlider(parent, label, minValue, maxValue, step, formatValue, onChange)
+    local slider = CreateFrame("Slider", nil, parent)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(minValue, maxValue)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    slider:EnableMouseWheel(true)
+
+    slider.track = slider:CreateTexture(nil, "BACKGROUND")
+    slider.track:SetTexture(WHITE)
+    setColor(slider.track, "SetVertexColor", CONTROL_BORDER)
+    slider.track:SetHeight(4)
+    slider.track:SetPoint("LEFT")
+    slider.track:SetPoint("RIGHT")
+
+    local thumb = slider:CreateTexture(nil, "OVERLAY")
+    thumb:SetTexture(WHITE)
+    thumb:SetSize(10, 16)
+    slider:SetThumbTexture(thumb)
+
+    -- Accent fill from the left end of the track up to the thumb.
+    slider.fill = slider:CreateTexture(nil, "ARTWORK")
+    slider.fill:SetTexture(WHITE)
+    setColor(slider.fill, "SetVertexColor", ACCENT)
+    slider.fill:SetHeight(4)
+    slider.fill:SetPoint("LEFT", slider.track, "LEFT")
+    slider.fill:SetPoint("RIGHT", thumb, "CENTER")
+
+    slider.label = createText(slider, 12, TEXT)
+    slider.label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 6)
+    slider.label:SetText(label)
+
+    slider.valueText = createText(slider, 11, ACCENT)
+    slider.valueText:SetPoint("BOTTOMRIGHT", slider, "TOPRIGHT", 0, 6)
+    -- A new Slider sits at its minimum; SetValue to that same value later
+    -- wouldn't fire OnValueChanged, so label it up front.
+    slider.valueText:SetText(formatValue(minValue))
+
+    slider:SetScript("OnValueChanged", function(self, value, userInput)
+        self.valueText:SetText(formatValue(value))
+        if userInput then
+            onChange(value)
+        end
+    end)
+    slider:SetScript("OnMouseWheel", function(self, delta)
+        local low, high = self:GetMinMaxValues()
+        local value = math.min(high, math.max(low, self:GetValue() + delta * step))
+        self:SetValue(value)
+        onChange(value)
+    end)
+
+    return slider
+end
+
 -- A sliding on/off switch with a clickable label. Uses SetOn/IsOn rather
 -- than CheckButton's SetChecked since it's a plain Button underneath.
 local function createToggle(parent, label, onChange)
@@ -148,16 +209,11 @@ end
 --------------------------------------------------------------------------
 
 local panel = CreateFrame("Frame", "ReforgedBreakTimerOptionsPanel", UIParent)
-panel.name = "Reforged Break Timer"
-
-local logo = panel:CreateTexture(nil, "ARTWORK")
-logo:SetSize(40, 40)
-logo:SetPoint("TOPLEFT", PADDING, -PADDING)
-logo:SetTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\logo")
+panel.name = "Dev's Raid Tools"
 
 local title = createText(panel, 18, TEXT)
-title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 12, -2)
-title:SetText("Reforged Break Timer")
+title:SetPoint("TOPLEFT", PADDING, -PADDING - 2)
+title:SetText("Dev's Raid Tools")
 
 local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 local version = getMetadata and getMetadata(addonName, "Version")
@@ -170,27 +226,127 @@ end
 local subtitle = createText(panel, 11, TEXT_MUTED)
 subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 subtitle:SetPoint("RIGHT", panel, "RIGHT", -PADDING, 0)
-subtitle:SetText("Pops up a picture whenever BigWigs calls a break.")
-
-local HEADER_HEIGHT = 40 + PADDING + CARD_GAP + 4
+subtitle:SetText("Raid-night extras. Every feature can be switched on or off.")
 
 --------------------------------------------------------------------------
--- Popup card
+-- Tabs
+--------------------------------------------------------------------------
+-- One tab per category, each showing a single full-size card. Flat text
+-- tabs with an accent underline on the selected one, over a hairline that
+-- runs the width of the panel.
+
+local tabs = {}
+
+local tabDivider = panel:CreateTexture(nil, "ARTWORK")
+tabDivider:SetTexture(WHITE)
+setColor(tabDivider, "SetVertexColor", CARD_BORDER)
+tabDivider:SetHeight(1)
+tabDivider:SetPoint("TOPLEFT", PADDING, -(TABS_TOP + TAB_HEIGHT))
+tabDivider:SetPoint("TOPRIGHT", -PADDING, -(TABS_TOP + TAB_HEIGHT))
+
+local function applyTabState(tab)
+    local isSelected = tab.page:IsShown()
+    setColor(tab.label, "SetTextColor", (isSelected or tab:IsMouseOver()) and TEXT or TEXT_MUTED)
+    tab.underline:SetShown(isSelected)
+end
+
+local function selectTab(selected)
+    for _, tab in ipairs(tabs) do
+        tab.page:SetShown(tab == selected)
+    end
+    for _, tab in ipairs(tabs) do
+        applyTabState(tab)
+    end
+end
+
+local function createPage(titleText)
+    local page = createCard(panel, titleText)
+    page:SetPoint("TOPLEFT", PADDING, -CONTENT_TOP)
+    page:SetPoint("BOTTOMRIGHT", -PADDING, PADDING)
+    return page
+end
+
+local function createTab(label, page)
+    local tab = CreateFrame("Button", nil, panel)
+    tab.page = page
+    tab:SetHeight(TAB_HEIGHT)
+
+    tab.label = createText(tab, 12, TEXT_MUTED)
+    tab.label:SetPoint("CENTER", 0, 1)
+    tab.label:SetText(label)
+    tab:SetWidth(tab.label:GetStringWidth() + 28)
+
+    tab.underline = tab:CreateTexture(nil, "OVERLAY")
+    tab.underline:SetTexture(WHITE)
+    setColor(tab.underline, "SetVertexColor", ACCENT)
+    tab.underline:SetHeight(2)
+    tab.underline:SetPoint("BOTTOMLEFT", 0, -1)
+    tab.underline:SetPoint("BOTTOMRIGHT", 0, -1)
+
+    local previous = tabs[#tabs]
+    if previous then
+        tab:SetPoint("LEFT", previous, "RIGHT", 4, 0)
+    else
+        tab:SetPoint("TOPLEFT", PADDING, -TABS_TOP)
+    end
+
+    tab:SetScript("OnClick", selectTab)
+    tab:SetScript("OnEnter", applyTabState)
+    tab:SetScript("OnLeave", applyTabState)
+
+    tabs[#tabs + 1] = tab
+    return tab
+end
+
+--------------------------------------------------------------------------
+-- Popup tab
 --------------------------------------------------------------------------
 
-local popupCard = createCard(panel, "Popup")
-popupCard:SetPoint("TOPLEFT", panel, "TOPLEFT", PADDING, -HEADER_HEIGHT)
-popupCard:SetPoint("TOPRIGHT", panel, "TOP", -CARD_GAP / 2, -HEADER_HEIGHT)
-popupCard:SetHeight(SETTINGS_CARD_HEIGHT)
-createCardHint(popupCard, "Drag the popup to move it. Preview shows it for 15 seconds.")
+local popupCard = createPage("Break popup")
+local popupHint = createCardHint(popupCard, "Drag the popup to move it. Preview shows it for 15 seconds.")
 
 -- The Settings window sits above the popup's normal strata, so a preview is
 -- lifted over it (and dropped back down when the panel closes).
-local previewButton = createButton(popupCard, "Preview", 90, function()
+local function showPreview()
     ReforgedBreakTimerFrame:SetFrameStrata("DIALOG")
     ns.ShowBreak(15, 15)
+end
+
+-- Pops the preview up while dragging (if it isn't already showing), so the
+-- new size is visible as it changes.
+local sizeSlider = createSlider(popupCard, "Size", 0.5, 2, 0.05, function(value)
+    return string.format("%d%%", value * 100 + 0.5)
+end, function(value)
+    ns.SetFrameScale(value)
+    if not ReforgedBreakTimerFrame:IsShown() then
+        showPreview()
+    end
 end)
-previewButton:SetPoint("BOTTOMLEFT", 14, 14)
+sizeSlider:SetPoint("TOPLEFT", popupHint, "BOTTOMLEFT", 0, -38)
+sizeSlider:SetWidth(320)
+
+-- Master switch: off means breaks show nothing (BigWigs' own bar stays).
+local breakPopupToggle = createToggle(popupCard, "Show break popup", function(isOn)
+    -- Switching it back on mid-break brings the popup straight back, so
+    -- lift it over the Settings window like a preview.
+    ReforgedBreakTimerFrame:SetFrameStrata("DIALOG")
+    ns.SetBreakPopupEnabled(isOn)
+end)
+breakPopupToggle:SetPoint("TOPLEFT", sizeSlider, "BOTTOMLEFT", 0, -22)
+
+local raidImageSyncToggle = createToggle(popupCard, "Use the raid leader's picture", function(isOn)
+    ns.SetRaidImageSyncEnabled(isOn)
+end)
+raidImageSyncToggle:SetPoint("TOPLEFT", breakPopupToggle, "BOTTOMLEFT", 0, -ROW_GAP)
+
+-- Leaves this popup as the only on-screen break timer.
+local hideBigWigsBarToggle = createToggle(popupCard, "Hide BigWigs break bar", function(isOn)
+    ns.SetHideBigWigsBreakBar(isOn)
+end)
+hideBigWigsBarToggle:SetPoint("TOPLEFT", raidImageSyncToggle, "BOTTOMLEFT", 0, -ROW_GAP)
+
+local previewButton = createButton(popupCard, "Preview", 90, showPreview)
+previewButton:SetPoint("TOPLEFT", hideBigWigsBarToggle, "BOTTOMLEFT", 0, -22)
 
 local resetPositionButton = createButton(popupCard, "Reset position", 110, function()
     ns.ResetFramePosition()
@@ -198,32 +354,43 @@ end)
 resetPositionButton:SetPoint("LEFT", previewButton, "RIGHT", 8, 0)
 
 --------------------------------------------------------------------------
--- Hearty Feast card
+-- Raid alerts tab
 --------------------------------------------------------------------------
 
-local feastCard = createCard(panel, "Hearty Feast alert")
-feastCard:SetPoint("TOPLEFT", panel, "TOP", CARD_GAP / 2, -HEADER_HEIGHT)
-feastCard:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PADDING, -HEADER_HEIGHT)
-feastCard:SetHeight(SETTINGS_CARD_HEIGHT)
-createCardHint(feastCard, "Yells over text-to-speech the moment anyone drops a Hearty Feast.")
+local alertsCard = createPage("Raid alerts")
+local alertsHint = createCardHint(alertsCard, "Extras for raid night. The summon list only shows up for warlocks.")
 
-local feastToggle = createToggle(feastCard, "Announce", function(isOn)
+local summonToggle = createToggle(alertsCard, "Warlock summon list", function(isOn)
+    ns.SetSummonHelperEnabled(isOn)
+end)
+summonToggle:SetPoint("TOPLEFT", alertsHint, "BOTTOMLEFT", 0, -18)
+
+local lootPassToggle = createToggle(alertsCard, "Gruul's Gone Wild loot prompt", function(isOn)
+    ns.SetLootPassPromptEnabled(isOn)
+end)
+lootPassToggle:SetPoint("TOPLEFT", summonToggle, "BOTTOMLEFT", 0, -ROW_GAP)
+
+local feastToggle = createToggle(alertsCard, "Hearty Feast TTS", function(isOn)
     ns.SetHeartyFeastTTSEnabled(isOn)
 end)
-feastToggle:SetPoint("BOTTOMLEFT", 14, 16)
+feastToggle:SetPoint("TOPLEFT", lootPassToggle, "BOTTOMLEFT", 0, -ROW_GAP)
 
-local feastTestButton = createButton(feastCard, "Test", 70, function()
+local feastTestButton = createButton(alertsCard, "Test", 60, function()
     ns.TestHeartyFeastAnnouncement()
 end)
-feastTestButton:SetPoint("BOTTOMRIGHT", -14, 14)
+feastTestButton:SetPoint("LEFT", feastToggle, "RIGHT", 14, 0)
+
+-- Hearty Feast is retail-only; on WoW Forever its row is hidden.
+if not ns.isHeartyFeastAvailable then
+    feastToggle:Hide()
+    feastTestButton:Hide()
+end
 
 --------------------------------------------------------------------------
--- Images card: a scrollable grid of clickable thumbnails
+-- Images tab: a scrollable grid of clickable thumbnails
 --------------------------------------------------------------------------
 
-local imagesCard = createCard(panel, "Break images")
-imagesCard:SetPoint("TOPLEFT", popupCard, "BOTTOMLEFT", 0, -CARD_GAP)
-imagesCard:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -PADDING, PADDING)
+local imagesCard = createPage("Break images")
 
 local imageCount = createText(imagesCard, 11, TEXT_MUTED)
 imageCount:SetPoint("LEFT", imagesCard.title, "RIGHT", 10, -1)
@@ -428,9 +595,26 @@ scrollFrame:SetScript("OnSizeChanged", function(self, width)
     self:UpdateScrollChildRect()
 end)
 
+-- Hidden tabs don't reliably get OnSizeChanged, so reflow the grid whenever
+-- its tab comes into view too.
+imagesCard:SetScript("OnShow", function()
+    layoutTiles(scrollFrame:GetWidth())
+end)
+
+createTab("Popup", popupCard)
+createTab("Images", imagesCard)
+createTab("Raid alerts", alertsCard)
+selectTab(tabs[1])
+
 local function refreshPanel()
     refreshTiles()
     feastToggle:SetOn(ns.IsHeartyFeastTTSEnabled())
+    lootPassToggle:SetOn(ns.IsLootPassPromptEnabled())
+    summonToggle:SetOn(ns.IsSummonHelperEnabled())
+    breakPopupToggle:SetOn(ns.IsBreakPopupEnabled())
+    raidImageSyncToggle:SetOn(ns.IsRaidImageSyncEnabled())
+    hideBigWigsBarToggle:SetOn(ns.IsHideBigWigsBreakBarEnabled())
+    sizeSlider:SetValue(ns.GetFrameScale())
     layoutTiles(scrollFrame:GetWidth())
 end
 
@@ -438,8 +622,12 @@ end
 -- first Show() of the panel isn't a hidden -> shown transition and OnShow
 -- never fires -- leaving every setting unsynced until the second open.
 panel:Hide()
-panel:SetScript("OnShow", refreshPanel)
+panel:SetScript("OnShow", function()
+    ns.SetOptionsOpen(true)
+    refreshPanel()
+end)
 panel:SetScript("OnHide", function()
+    ns.SetOptionsOpen(false)
     ReforgedBreakTimerFrame:SetFrameStrata("MEDIUM")
 end)
 
@@ -455,6 +643,18 @@ function ns.OpenOptions()
         -- first call can open to the wrong sub-category.
         InterfaceOptionsFrame_OpenToCategory(panel)
         InterfaceOptionsFrame_OpenToCategory(panel)
+    end
+end
+
+-- /drt opens these options; /drt preview shows the popup for 15 seconds.
+SLASH_DEVSRAIDTOOLS1 = "/drt"
+SlashCmdList.DEVSRAIDTOOLS = function(input)
+    local command = strtrim(input or ""):lower()
+    if command == "preview" then
+        ReforgedBreakTimerFrame:SetFrameStrata("MEDIUM")
+        ns.ShowBreak(15, 15)
+    else
+        ns.OpenOptions()
     end
 end
 
