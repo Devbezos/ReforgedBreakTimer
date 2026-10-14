@@ -3,7 +3,7 @@ local addonName, ns = ...
 local FALLBACK_IMAGE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local ACCENT_COLOR = { 0.20, 0.85, 0.35 }
 local IMAGE_SIZE = 267 -- also the frame's width, so there's no side padding
-local TOP_ROW_HEIGHT = 40 -- room above the image for the logo/close/rotate buttons
+local TOP_ROW_HEIGHT = 40 -- room above the image for the close/next-image buttons
 local BUTTON_INSET = 6 -- keeps those buttons inside the box instead of flush on its edge
 local PROGRESS_BAR_HEIGHT = 28
 
@@ -68,12 +68,32 @@ function ns.GetFrameTexCoords(entry, index)
         row / entry.rows + insetV, (row + 1) / entry.rows - insetV
 end
 
--- Keeps every sprite sheet assigned to a tiny on-screen texture for the
--- whole session, so it's already loaded when a break picks it rather than
+-- Keeps every sprite sheet assigned to a tiny on-screen texture ahead of
+-- time, so it's already loaded when a break picks it rather than
 -- streaming in during the first moments of playback. These have to actually
 -- be drawn -- an alpha 0 or hidden texture can skip the load entirely --
 -- hence the near-invisible (but non-zero) alpha.
-local function keepSheetsLoaded()
+--
+-- The sheets are big (several MB of video memory each), so they're only
+-- held while a raid break can actually come up -- in a raid -- or while the
+-- options panel is open, where Preview shows them. The rest of the time
+-- the textures are cleared so the game can let them go.
+local sheetPreloads = {}
+local sheetsLoaded = false
+local optionsOpen = false
+
+local function updateSheetPreloads()
+    local shouldLoad = IsInRaid() or optionsOpen
+    if shouldLoad == sheetsLoaded then
+        return
+    end
+    sheetsLoaded = shouldLoad
+    for _, tex in ipairs(sheetPreloads) do
+        tex:SetTexture(shouldLoad and tex.path or nil)
+    end
+end
+
+local function createSheetPreloads()
     local holder = CreateFrame("Frame", nil, UIParent)
     holder:SetSize(4, 4)
     holder:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -2, 2)
@@ -83,9 +103,20 @@ local function keepSheetsLoaded()
         if entry.frames then
             local tex = holder:CreateTexture(nil, "BACKGROUND")
             tex:SetAllPoints()
-            tex:SetTexture(entry.path)
+            tex.path = entry.path
+            sheetPreloads[#sheetPreloads + 1] = tex
         end
     end
+
+    holder:RegisterEvent("GROUP_ROSTER_UPDATE")
+    holder:RegisterEvent("PLAYER_ENTERING_WORLD")
+    holder:SetScript("OnEvent", updateSheetPreloads)
+end
+
+-- Called by the options panel as it opens and closes.
+function ns.SetOptionsOpen(isOpen)
+    optionsOpen = isOpen
+    updateSheetPreloads()
 end
 
 -- Returns the list of images the user has not disabled in the options panel.
@@ -318,7 +349,7 @@ end
 
 -- Shows the break frame with a random image (or the raid leader's, if their
 -- pick already arrived) and starts its countdown. The image stays static
--- for the whole break unless someone hits the rotate button.
+-- for the whole break unless someone hits the next-image button.
 -- `remaining`/`total` are seconds, as reported by BigWigs.
 function ns.ShowBreak(remaining, total)
     local frame = ReforgedBreakTimerFrame
@@ -350,13 +381,6 @@ function ns.IsBreakPopupEnabled()
     return ReforgedBreakTimerDB.breakPopup and true or false
 end
 
-function ns.SetBreakPopupEnabled(isEnabled)
-    ReforgedBreakTimerDB.breakPopup = isEnabled
-    if not isEnabled then
-        ns.HideBreak()
-    end
-end
-
 function ns.IsRaidImageSyncEnabled()
     return ReforgedBreakTimerDB.raidImageSync and true or false
 end
@@ -365,7 +389,7 @@ function ns.SetRaidImageSyncEnabled(isEnabled)
     ReforgedBreakTimerDB.raidImageSync = isEnabled
 end
 
--- The rotate button: a local-only change that also stops a late-arriving
+-- The next-image button: a local-only change that also stops a late-arriving
 -- leader pick from overriding what this player chose.
 function ns.ShowNextImage()
     imageChangedByUser = true
@@ -440,26 +464,134 @@ end)
 -- BigWigs break detection
 --------------------------------------------------------------------------
 -- Primary path: BigWigs' Break plugin fires "BigWigs_StartBreak" /
--- "BigWigs_StopBreak" via AceEvent-3.0 the instant a break starts/ends,
+-- "BigWigs_StopBreak" on its message bus the instant a break starts/ends,
 -- with full GetTime()-precision duration -- no rounding, no polling lag,
 -- so our countdown starts in the same tick as BigWigs' own bar.
 --
 -- Fallback path: BigWigs_Plugins/Break.lua also stores the active break in
--- BigWigs3DB.breakTime: { time(), totalSeconds, nick, isDBM }. We poll that
--- (5x/sec) in case the message path isn't available -- e.g. our addon
--- registers after BigWigs already fired BigWigs_StartBreak for this break,
--- or AceEvent-3.0 isn't loaded for some reason. This path only has
--- whole-second precision (time(), not GetTime()), so it's the one place
--- a ~1s offset from BigWigs' own bar can still show up.
+-- BigWigs3DB.breakTime: { time(), totalSeconds, nick, isDBM }. That's read
+-- once at load, to pick up a break that was already running before we
+-- hooked in (e.g. after a /reload), and polled (5x/sec) only if the message
+-- path isn't reachable at all. It has whole-second precision (time(), not
+-- GetTime()), so it's the one place a ~1s offset from BigWigs' own bar can
+-- still show up.
+
+-- When the break in progress ends (GetTime() based) and how long it was in
+-- total, kept even with the popup switched off so turning it back on
+-- mid-break can still show the right countdown.
+local breakEndsAt, breakTotal = 0, 0
+
+-- Set when the popup's close button is used during a real break: the popup
+-- stays closed for the rest of that break and BigWigs' bar comes back, so
+-- there's always a timer on screen. Cleared by the next break, or by
+-- switching "Show break popup" back on.
+local popupDismissed = false
+
+-- BigWigs' Break plugin, the text of the bar it last started and the full
+-- BigWigs_StartBar arguments it used, so the hide-bar option can stop that
+-- exact bar -- and start it up again when the option (or the popup) is
+-- switched back off mid-break.
+local breakPlugin, breakBarText
+local breakBarArgs, breakBarArgCount
+local barHiddenByUs = false
+
+-- Sends a message on whichever bus hookBigWigsMessages() registered with.
+local sendBigWigsMessage
+
+-- BigWigs' bar only goes away while our popup is there to replace it.
+local function shouldHideBigWigsBar()
+    return wasBreakActive and not popupDismissed
+        and ns.IsBreakPopupEnabled() and ns.IsHideBigWigsBreakBarEnabled()
+end
+
+local function stopBigWigsBreakBar()
+    if barHiddenByUs or not (sendBigWigsMessage and breakPlugin and breakBarText) then
+        return
+    end
+    barHiddenByUs = true
+    sendBigWigsMessage("BigWigs_StopBar", breakPlugin, breakBarText)
+end
+
+-- Replays the Break plugin's own BigWigs_StartBar with the time left now.
+local function restoreBigWigsBreakBar(remaining)
+    if not (barHiddenByUs and sendBigWigsMessage and breakBarArgs) then
+        return
+    end
+    barHiddenByUs = false
+    local count = math.max(breakBarArgCount, 4)
+    local args = { unpack(breakBarArgs, 1, count) }
+    args[4] = remaining -- (module, key, text, time, icon, ...)
+    sendBigWigsMessage("BigWigs_StartBar", unpack(args, 1, count))
+end
+
+-- Brings the popup and BigWigs' bar in line with the current settings for
+-- the break in progress, so flipping either option mid-break takes effect
+-- right away, in both directions.
+local function applyBreakSettings()
+    local remaining = breakEndsAt - GetTime()
+    if not wasBreakActive or remaining <= 0 then
+        return
+    end
+
+    if not ns.IsBreakPopupEnabled() then
+        ns.HideBreak()
+    elseif not popupDismissed and not ReforgedBreakTimerFrame:IsShown() then
+        ns.ShowBreak(remaining, breakTotal)
+    end
+
+    if shouldHideBigWigsBar() then
+        stopBigWigsBreakBar()
+    else
+        restoreBigWigsBreakBar(remaining)
+    end
+end
+
+function ns.SetBreakPopupEnabled(isEnabled)
+    ReforgedBreakTimerDB.breakPopup = isEnabled
+    if isEnabled then
+        popupDismissed = false
+    else
+        ns.HideBreak() -- also closes an options preview
+    end
+    applyBreakSettings()
+end
+
+-- The popup's close button.
+function ns.DismissBreak()
+    ns.HideBreak()
+    if wasBreakActive then
+        popupDismissed = true
+        applyBreakSettings()
+    end
+end
+
+function ns.IsHideBigWigsBreakBarEnabled()
+    return ReforgedBreakTimerDB.hideBigWigsBreakBar and true or false
+end
+
+function ns.SetHideBigWigsBreakBar(isEnabled)
+    ReforgedBreakTimerDB.hideBigWigsBreakBar = isEnabled
+    applyBreakSettings()
+end
 
 -- A real BigWigs break (never the options preview). Break state is still
 -- tracked with the popup switched off, just nothing is shown or sent.
-local function startBreak(remaining, total)
+local function beginBreak(remaining, total)
+    wasBreakActive = true
+    popupDismissed = false
+    breakEndsAt, breakTotal = GetTime() + remaining, total
     if not ns.IsBreakPopupEnabled() then
         return
     end
     ns.ShowBreak(remaining, total)
     broadcastBreakImage()
+end
+
+local function endBreak()
+    wasBreakActive = false
+    lastPolledBreakStart, lastPolledBreakTotal = nil, nil
+    barHiddenByUs = false
+    ns.HideBreak()
 end
 
 local function checkBreak()
@@ -478,98 +610,104 @@ local function checkBreak()
                 or startTime ~= lastPolledBreakStart
                 or totalSeconds ~= lastPolledBreakTotal
             if isNewOrChanged then
-                wasBreakActive = true
                 lastPolledBreakStart, lastPolledBreakTotal = startTime, totalSeconds
-                startBreak(remaining, totalSeconds)
+                beginBreak(remaining, totalSeconds)
             end
             return
         end
     end
 
     if wasBreakActive then
-        wasBreakActive = false
-        lastPolledBreakStart, lastPolledBreakTotal = nil, nil
-        ns.HideBreak()
+        endBreak()
     end
 end
-
--- BigWigs' Break plugin and the text of the bar it last started, so the
--- hide-bar option can stop that exact bar (also when switched on mid-break).
-local bigWigsListener, breakPlugin, breakBarText
 
 local function isBreakPlugin(module)
     return type(module) == "table" and (module == breakPlugin or module.moduleName == "Break")
 end
 
-local function stopBigWigsBreakBar()
-    if bigWigsListener and breakPlugin and breakBarText then
-        bigWigsListener:SendMessage("BigWigs_StopBar", breakPlugin, breakBarText)
-    end
-end
-
-function ns.IsHideBigWigsBreakBarEnabled()
-    return ReforgedBreakTimerDB.hideBigWigsBreakBar and true or false
-end
-
-function ns.SetHideBigWigsBreakBar(isEnabled)
-    ReforgedBreakTimerDB.hideBigWigsBreakBar = isEnabled
-    if isEnabled and wasBreakActive and ns.IsBreakPopupEnabled() then
-        stopBigWigsBreakBar()
-    end
-end
-
 -- Registers with BigWigs' own message bus for exact-precision timing.
--- Returns true if it managed to hook in, false if AceEvent-3.0 isn't
--- available yet (the poll-based fallback above still works either way).
+-- Current BigWigs no longer uses AceEvent-3.0 for its messages: they go
+-- through BigWigsLoader.RegisterMessage/SendMessage instead, so that's
+-- tried first (an AceEvent listener would never hear anything there).
+-- AceEvent is only a fallback for older BigWigs builds. Returns false if
+-- neither is available (the poll-based fallback above still works).
 local function hookBigWigsMessages()
-    local AceEvent = LibStub and LibStub("AceEvent-3.0", true)
-    if not AceEvent then
-        return false
+    local listener = {}
+    local register
+
+    local loader = BigWigsLoader
+    if type(loader) == "table" and type(loader.RegisterMessage) == "function"
+        and type(loader.SendMessage) == "function" then
+        register = function(message, handler)
+            loader.RegisterMessage(listener, message, handler)
+        end
+        sendBigWigsMessage = function(message, ...)
+            loader.SendMessage(listener, message, ...)
+        end
+    else
+        local AceEvent = LibStub and LibStub("AceEvent-3.0", true)
+        if not AceEvent then
+            return false
+        end
+        AceEvent:Embed(listener)
+        register = function(message, handler)
+            listener:RegisterMessage(message, handler)
+        end
+        sendBigWigsMessage = function(message, ...)
+            listener:SendMessage(message, ...)
+        end
     end
 
-    local listener = {}
-    AceEvent:Embed(listener)
-
-    listener:RegisterMessage("BigWigs_StartBreak", function(_, plugin, seconds)
+    register("BigWigs_StartBreak", function(_, plugin, seconds)
         breakPlugin = plugin or breakPlugin
-        wasBreakActive = true
-        startBreak(seconds, seconds)
 
-        -- Keep the poll fallback's view in sync with what we just showed,
-        -- so it doesn't mistake this for a change and redundantly re-fire
-        -- on its very next tick (BigWigs writes breakTime before firing
-        -- this message, so it should already reflect this same break).
+        -- BigWigs writes breakTime before firing this message, so it
+        -- already describes this same break. When it's one we've already
+        -- shown -- BigWigs restarting a break that was running before a
+        -- /reload, which the load-time check picked up first -- leave the
+        -- popup (and its picture) alone instead of opening it again.
         local tbl = BigWigs3DB and BigWigs3DB.breakTime
+        local total = seconds
         if tbl then
+            local isSameBreak = wasBreakActive
+                and tbl[1] == lastPolledBreakStart and tbl[2] == lastPolledBreakTotal
             lastPolledBreakStart, lastPolledBreakTotal = tbl[1], tbl[2]
+            if isSameBreak then
+                return
+            end
+            -- After a restart `seconds` is only what's left of it.
+            total = math.max(tbl[2] or seconds, seconds)
         end
+        beginBreak(seconds, total)
     end)
 
-    listener:RegisterMessage("BigWigs_StopBreak", function()
-        wasBreakActive = false
-        lastPolledBreakStart, lastPolledBreakTotal = nil, nil
-        ns.HideBreak()
-    end)
+    register("BigWigs_StopBreak", endBreak)
 
     -- BigWigs' Break plugin draws its own "Break time" bar by sending
     -- BigWigs_StartBar from itself. With the hide option on, we let that
     -- bar get created and then have BigWigs' Bars plugin stop it again --
     -- deferred a frame, since our handler can run before Bars' own one has
     -- made the bar. Matching on the sending plugin (not the bar text) keeps
-    -- this independent of BigWigs' locale.
-    listener:RegisterMessage("BigWigs_StartBar", function(_, module, _, text)
+    -- this independent of BigWigs' locale. This also hears our own replay
+    -- from restoreBigWigsBreakBar, which is fine: the settings that made
+    -- us replay it mean the deferred check below leaves it alone.
+    register("BigWigs_StartBar", function(_, ...)
+        local module, _, text = ...
         if not isBreakPlugin(module) then
             return
         end
         breakPlugin = module
         breakBarText = text
-        -- With the popup off, BigWigs' bar is the only timer left, so keep it.
-        if ns.IsBreakPopupEnabled() and ns.IsHideBigWigsBreakBarEnabled() then
-            C_Timer.After(0, stopBigWigsBreakBar)
-        end
+        breakBarArgs, breakBarArgCount = { ... }, select("#", ...)
+        barHiddenByUs = false
+        C_Timer.After(0, function()
+            if shouldHideBigWigsBar() then
+                stopBigWigsBreakBar()
+            end
+        end)
     end)
 
-    bigWigsListener = listener
     return true
 end
 
@@ -578,9 +716,7 @@ end
 --------------------------------------------------------------------------
 
 local function createFrame()
-    -- Width matches the image exactly (no side padding), so the logo and
-    -- close button (anchored flush to the top corners) end up flush with
-    -- its edges too.
+    -- Width matches the image exactly (no side padding).
     local frame = CreateFrame("Frame", "ReforgedBreakTimerFrame", UIParent, "BackdropTemplate")
     frame:SetSize(IMAGE_SIZE, TOP_ROW_HEIGHT + IMAGE_SIZE + PROGRESS_BAR_HEIGHT)
     frame:SetPoint("CENTER", 0, 100)
@@ -602,9 +738,9 @@ local function createFrame()
 
     frame.closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     frame.closeButton:SetPoint("TOPRIGHT", -BUTTON_INSET, -BUTTON_INSET)
-    frame.closeButton:SetScript("OnClick", function() frame:Hide() end)
+    frame.closeButton:SetScript("OnClick", function() ns.DismissBreak() end)
 
-    -- Rotate button, beside the close button, for cycling to a different
+    -- Next-image (skip) button, beside the close button, for cycling to a different
     -- picture on demand instead of waiting for the next break.
     frame.nextImageButton = CreateFrame("Button", nil, frame)
     frame.nextImageButton:SetSize(20, 20)
@@ -620,12 +756,6 @@ local function createFrame()
         GameTooltip:Show()
     end)
     frame.nextImageButton:SetScript("OnLeave", GameTooltip_Hide)
-
-    -- Logo, inset from the top-left corner so it sits inside the box.
-    frame.logo = frame:CreateTexture(nil, "ARTWORK")
-    frame.logo:SetSize(32, 32)
-    frame.logo:SetPoint("TOPLEFT", BUTTON_INSET, -BUTTON_INSET)
-    frame.logo:SetTexture("Interface\\AddOns\\ReforgedBreakTimer\\textures\\logo")
 
     -- Image display -- flush with the frame's left/right edges (no side
     -- padding), leaving just enough room above for the button row.
@@ -708,13 +838,15 @@ eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     -- checkBreak()) detects one.
     frame:Hide()
 
-    keepSheetsLoaded()
+    createSheetPreloads()
+    updateSheetPreloads()
 
-    -- ## OptionalDeps: BigWigs in the .toc means BigWigs (and its bundled
-    -- AceEvent-3.0) loads before we do, so this should succeed whenever
-    -- BigWigs is installed. The poll below still runs regardless, as a
-    -- safety net for whatever this doesn't catch.
-    hookBigWigsMessages()
-
-    C_Timer.NewTicker(0.2, checkBreak)
+    -- ## OptionalDeps: BigWigs in the .toc means BigWigs (and with it
+    -- BigWigsLoader) loads before we do, so this should succeed whenever
+    -- BigWigs is installed. Only without it does breakTime get polled.
+    if hookBigWigsMessages() then
+        checkBreak()
+    else
+        C_Timer.NewTicker(0.2, checkBreak)
+    end
 end)
